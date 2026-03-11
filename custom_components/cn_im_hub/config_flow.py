@@ -75,7 +75,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
                 errors["base"] = "agent_id_required"
             else:
                 return self.async_create_entry(
-                    title="CN IM Hub",
+                    title="中国即时通信合集",
                     data={},
                     options={CONF_AGENT_ID: agent_id},
                 )

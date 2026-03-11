@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "CN IM Hub",
+        "title": "中国即时通信合集",
         "description": "Choose one global conversation agent. Providers are added later from this integration page."
       }
     },

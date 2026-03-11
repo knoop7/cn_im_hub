@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "CN 即时通信 Hub",
+        "title": "中国即时通信合集",
         "description": "先选择一个全局会话 agent。后续服务在集成页面中按按钮逐个添加。"
       }
     },

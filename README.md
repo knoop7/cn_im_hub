@@ -1,4 +1,4 @@
-# CN IM Hub
+# 中国即时通信合集
 
 把中国常见即时通信平台聚合到一个 Home Assistant 集成中。
 
@@ -26,7 +26,7 @@
 
 1. 将本仓库部署到 HA 的 `custom_components/cn_im_hub`。
 2. 重启 Home Assistant。
-3. 进入 `设置 -> 设备与服务 -> 添加集成`，搜索 `CN IM Hub`。
+3. 进入 `设置 -> 设备与服务 -> 添加集成`，搜索 `中国即时通信合集`。
 4. 添加时通过下拉列表选择一次全局 `agent_id`（后续所有平台共用）。
 
 ### 2) 首次添加行为
@@ -35,7 +35,7 @@
 
 ### 3) 在集成页面添加服务（Subentry）
 
-1. 进入 `设置 -> 设备与服务 -> CN IM Hub`。
+1. 进入 `设置 -> 设备与服务 -> 中国即时通信合集`。
 2. 在该集成页面点击“添加服务/添加子项”（不同 HA 版本文案略有差异）。
 3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk`。
 4. 填写该平台凭据并保存。
@@ -52,7 +52,7 @@
 
 ## 平台后端设置
 
-说明：以下步骤按你最初参考的 `ha-feishu`、`ha_wecom` 以及当前实现整理，统一采用“主动外连（WebSocket/Stream）”，不要求公网回调地址。
+说明：以下步骤按你最初参考的 `ha-feishu`、`ha_wecom` 与 Hello Claw 第三章整理，统一采用“主动外连（WebSocket/Stream）”，不要求公网回调地址。
 
 ### Feishu（飞书）
 
@@ -65,6 +65,13 @@
 7. 发布应用（企业内可用）。
 8. 在 HA 填写：`app_id`、`app_secret`。
 
+参考截图（来自 `ha-feishu`）：
+
+![飞书-创建应用](docs/images/feishu/feishu-step2-create-app.png)
+![飞书-获取凭据](docs/images/feishu/feishu-step3-credentials.png)
+![飞书-权限管理](docs/images/feishu/feishu-step4-permissions.png)
+![飞书-事件订阅](docs/images/feishu/feishu-step6-event-subscription.png)
+
 ### WeCom（企业微信）
 
 1. 在企业微信管理后台进入“智能机器人”。
@@ -75,14 +82,29 @@
 6. 不配置 webhook 公网回调。
 7. 在 HA 填写：`bot_id`、`secret`。
 
+参考截图（来自 `ha_wecom`）：
+
+![企微-创建机器人](docs/images/wecom/wecom-setup-1-create-bot.png)
+![企微-接入方式](docs/images/wecom/wecom-setup-3-enter-chat.png)
+![企微-BotID与Secret](docs/images/wecom/wecom-setup-2-bot-id-secret.png)
+
 ### QQ（QQ 开放平台机器人）
 
-1. 在 QQ 开放平台创建机器人应用。
-2. 获取 `AppID` 与 `AppSecret`。
-3. 开通所需消息权限（按你的场景启用私聊/群聊/频道）。
-4. 使用官方 Gateway WebSocket 模式。
-5. 不配置 HTTP 回调地址。
-6. 在 HA 填写：`qq_app_id`、`qq_client_secret`。
+以下步骤来自 Hello Claw 第三章（QQ 机器人部分），按本集成可用字段对应：
+
+1. 打开 QQ 开放平台 OpenClaw 接入页并登录：
+   `https://q.qq.com/qqbot/openclaw/login.html`
+2. 点击“创建机器人”，设置机器人名称与头像。
+3. 创建完成后记录 `AppID` 与 `AppSecret`。
+4. 在 QQ 平台侧确认机器人已发布可用。
+5. 本集成采用 Gateway WebSocket，不配置 HTTP 回调地址。
+6. 在 HA 的 QQ 子服务里填写：`qq_app_id`、`qq_client_secret`。
+
+参考截图（来自 Hello Claw）：
+
+![QQ-注册登录](docs/images/qq/qq-bot-register.png)
+![QQ-部署信息](docs/images/qq/qq-bot-deploy-browser.png)
+![QQ-聊天测试](docs/images/qq/qq-bot-chat.jpg)
 
 ### DingTalk（钉钉）
 
@@ -100,6 +122,15 @@
 - 平台凭据正确，且后台已发布/启用机器人能力。
 - 网络可从 HA 主动访问平台接口（飞书、企微、QQ、钉钉）。
 - 不配置公网回调 URL（本集成按主动外连设计）。
+
+## 参考来源
+
+- Hello Claw 第三章（QQ 机器人流程）：
+  `https://datawhalechina.github.io/hello-claw/cn/adopt/chapter3/`
+- ha-feishu（飞书后台配置与截图）：
+  `https://github.com/ha-china/ha-feishu`
+- ha_wecom（企微后台配置与截图）：
+  `https://github.com/ha-china/ha_wecom`
 
 ## 目标地址格式（send_message）
 
