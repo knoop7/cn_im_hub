@@ -1,7 +1,5 @@
 # 中国即时通信合集
 
-[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ha-china&repository=cn_im_hub&category=integration)
-
 把中国常见即时通信平台聚合到一个 Home Assistant 集成中。
 
 ## 设计目标
@@ -26,9 +24,7 @@
 
 ### 1) 安装集成
 
-HACS 一键安装：
-
-`https://my.home-assistant.io/redirect/hacs_repository/?owner=ha-china&repository=cn_im_hub&category=integration`
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ha-china&repository=cn_im_hub&category=integration)
 
 1. 将本仓库部署到 HA 的 `custom_components/cn_im_hub`。
 2. 重启 Home Assistant。
