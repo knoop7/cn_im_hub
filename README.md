@@ -116,12 +116,12 @@
 
 ### WeChat（个人微信）
 
-1. 准备可用的 `agentwsserver` 地址（`ws://...` 或 `wss://...`）。
-2. 在你的 `agentwsserver` 认证页面获取 token。
-3. 在 HA 集成页面添加 `WeChat` 子服务时：
-   - 第一步可填写认证链接（可选，方便记录/跳转）
-   - 第二步填写 `wechat_ws_url`、`wechat_token`
-4. 保存后状态传感器应进入 `connected`（或短暂 `connecting`）。
+1. 在 HA 集成页面添加 `WeChat`（个人微信）子服务。
+2. 认证引导页可填写认证链接（可选），用于记录你获取 token 的入口。
+3. 第二步填写 `wechat_token`。
+4. 个人微信桥接端连接 HA 内置地址：
+   - `ws://<HA地址>:8123/api/cn_im_hub/wechat/ws?token=<wechat_token>`
+5. 连接后状态传感器会变为 `connected`。
 
 常见踩坑（钉钉）：
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import uuid4
 
 import voluptuous as vol
 
@@ -28,7 +29,6 @@ from .const import (
     CONF_QQ_CLIENT_SECRET,
     CONF_WECHAT_AUTH_URL,
     CONF_WECHAT_TOKEN,
-    CONF_WECHAT_WS_URL,
     CONF_WECOM_BOT_ID,
     CONF_WECOM_SECRET,
     DOMAIN,
@@ -198,7 +198,6 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
                         CONF_WECHAT_AUTH_URL,
                         default=current.get(CONF_WECHAT_AUTH_URL, ""),
                     ): str,
-                    vol.Required(CONF_WECHAT_WS_URL, default=current.get(CONF_WECHAT_WS_URL, "")): str,
                     vol.Required(CONF_WECHAT_TOKEN, default=current.get(CONF_WECHAT_TOKEN, "")): str,
                 }
             )
@@ -224,6 +223,7 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
             return self.async_abort(reason="already_configured")
         self._current = {}
         if self._subentry_type == PROVIDER_WECHAT:
+            self._current[CONF_WECHAT_TOKEN] = uuid4().hex
             return await self.async_step_auth_guide(user_input)
         return await self.async_step_set_options(user_input)
 
@@ -254,7 +254,7 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
                 }
             ),
             description_placeholders={
-                "default_auth_url": "在你的 agentwsserver 后台查看认证入口链接并获取 token。",
+                "default_auth_url": "在你的个人微信桥接服务页面完成认证，复制 token 后继续。",
             },
         )
 

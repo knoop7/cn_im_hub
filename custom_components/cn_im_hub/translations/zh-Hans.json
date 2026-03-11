@@ -104,7 +104,6 @@
         "set_options": {
           "title": "添加个人微信",
           "data": {
-            "wechat_ws_url": "WebSocket 地址",
             "wechat_token": "Token",
             "wechat_auth_url": "认证链接（可选）"
           }

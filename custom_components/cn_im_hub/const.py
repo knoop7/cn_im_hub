@@ -29,7 +29,6 @@ CONF_QQ_CLIENT_SECRET: Final = "qq_client_secret"
 CONF_DINGTALK_CLIENT_ID: Final = "dingtalk_client_id"
 CONF_DINGTALK_CLIENT_SECRET: Final = "dingtalk_client_secret"
 
-CONF_WECHAT_WS_URL: Final = "wechat_ws_url"
 CONF_WECHAT_TOKEN: Final = "wechat_token"
 CONF_WECHAT_AUTH_URL: Final = "wechat_auth_url"
 
