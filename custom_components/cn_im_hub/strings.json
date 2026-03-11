@@ -86,6 +86,30 @@
           }
         }
       }
+    },
+    "wechat": {
+      "entry_type": "WeChat Service",
+      "initiate_flow": {
+        "user": "Add WeChat",
+        "reconfigure": "WeChat Settings"
+      },
+      "step": {
+        "auth_guide": {
+          "title": "WeChat Auth",
+          "description": "Open your agentwsserver auth page to obtain a token, then continue.\n\nAuth hint: {default_auth_url}",
+          "data": {
+            "wechat_auth_url": "Auth URL (optional)"
+          }
+        },
+        "set_options": {
+          "title": "Add WeChat",
+          "data": {
+            "wechat_ws_url": "WebSocket URL",
+            "wechat_token": "Token",
+            "wechat_auth_url": "Auth URL (optional)"
+          }
+        }
+      }
     }
   }
 }

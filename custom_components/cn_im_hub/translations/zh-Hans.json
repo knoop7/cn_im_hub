@@ -86,6 +86,30 @@
           }
         }
       }
+    },
+    "wechat": {
+      "entry_type": "个人微信",
+      "initiate_flow": {
+        "user": "添加个人微信",
+        "reconfigure": "个人微信设置"
+      },
+      "step": {
+        "auth_guide": {
+          "title": "个人微信认证",
+          "description": "先在 agentwsserver 认证页面获取 token，再继续填写连接信息。\n\n认证提示：{default_auth_url}",
+          "data": {
+            "wechat_auth_url": "认证链接（可选）"
+          }
+        },
+        "set_options": {
+          "title": "添加个人微信",
+          "data": {
+            "wechat_ws_url": "WebSocket 地址",
+            "wechat_token": "Token",
+            "wechat_auth_url": "认证链接（可选）"
+          }
+        }
+      }
     }
   }
 }

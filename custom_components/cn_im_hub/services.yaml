@@ -12,6 +12,7 @@ send_message:
             - wecom
             - qq
             - dingtalk
+            - wechat
     target:
       required: false
       selector:
@@ -47,6 +48,7 @@ test_conversation:
             - wecom
             - qq
             - dingtalk
+            - wechat
     text:
       required: true
       selector:

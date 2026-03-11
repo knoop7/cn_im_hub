@@ -26,17 +26,22 @@ from .const import (
     CONF_FEISHU_APP_SECRET,
     CONF_QQ_APP_ID,
     CONF_QQ_CLIENT_SECRET,
+    CONF_WECHAT_AUTH_URL,
+    CONF_WECHAT_TOKEN,
+    CONF_WECHAT_WS_URL,
     CONF_WECOM_BOT_ID,
     CONF_WECOM_SECRET,
     DOMAIN,
     PROVIDER_DINGTALK,
     PROVIDER_FEISHU,
     PROVIDER_QQ,
+    PROVIDER_WECHAT,
     PROVIDER_WECOM,
 )
 from .providers.dingtalk import async_validate_config as validate_dingtalk
 from .providers.feishu import async_validate_config as validate_feishu
 from .providers.qq import async_validate_config as validate_qq
+from .providers.wechat import async_validate_config as validate_wechat
 from .providers.wecom import async_validate_config as validate_wecom
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,6 +107,7 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
             PROVIDER_WECOM: ProviderSubentryFlow,
             PROVIDER_QQ: ProviderSubentryFlow,
             PROVIDER_DINGTALK: ProviderSubentryFlow,
+            PROVIDER_WECHAT: ProviderSubentryFlow,
         }
 
 
@@ -159,6 +165,9 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
             return
         if self._subentry_type == PROVIDER_DINGTALK:
             await validate_dingtalk(self.hass, data)
+            return
+        if self._subentry_type == PROVIDER_WECHAT:
+            await validate_wechat(self.hass, data)
 
     def _schema(self, current: dict[str, Any]) -> vol.Schema:
         if self._subentry_type == PROVIDER_FEISHU:
@@ -182,6 +191,17 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
                     vol.Required(CONF_QQ_CLIENT_SECRET, default=current.get(CONF_QQ_CLIENT_SECRET, "")): str,
                 }
             )
+        if self._subentry_type == PROVIDER_WECHAT:
+            return vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_WECHAT_AUTH_URL,
+                        default=current.get(CONF_WECHAT_AUTH_URL, ""),
+                    ): str,
+                    vol.Required(CONF_WECHAT_WS_URL, default=current.get(CONF_WECHAT_WS_URL, "")): str,
+                    vol.Required(CONF_WECHAT_TOKEN, default=current.get(CONF_WECHAT_TOKEN, "")): str,
+                }
+            )
         return vol.Schema(
             {
                 vol.Required(CONF_DINGTALK_CLIENT_ID, default=current.get(CONF_DINGTALK_CLIENT_ID, "")): str,
@@ -203,6 +223,8 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
         if existing:
             return self.async_abort(reason="already_configured")
         self._current = {}
+        if self._subentry_type == PROVIDER_WECHAT:
+            return await self.async_step_auth_guide(user_input)
         return await self.async_step_set_options(user_input)
 
     async def async_step_reconfigure(
@@ -210,6 +232,31 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
     ) -> SubentryFlowResult:
         self._current = dict(self._get_reconfigure_subentry().data)
         return await self.async_step_set_options(user_input)
+
+    async def async_step_auth_guide(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Show auth guide for WeChat token acquisition."""
+        if user_input is not None:
+            auth_url = str(user_input.get(CONF_WECHAT_AUTH_URL, "")).strip()
+            if auth_url:
+                self._current[CONF_WECHAT_AUTH_URL] = auth_url
+            return await self.async_step_set_options(None)
+
+        return self.async_show_form(
+            step_id="auth_guide",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_WECHAT_AUTH_URL,
+                        default=self._current.get(CONF_WECHAT_AUTH_URL, ""),
+                    ): str,
+                }
+            ),
+            description_placeholders={
+                "default_auth_url": "在你的 agentwsserver 后台查看认证入口链接并获取 token。",
+            },
+        )
 
     async def async_step_set_options(
         self, user_input: dict[str, Any] | None
@@ -230,6 +277,7 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
                         PROVIDER_WECOM: "WeCom",
                         PROVIDER_QQ: "QQ",
                         PROVIDER_DINGTALK: "DingTalk",
+                        PROVIDER_WECHAT: "WeChat",
                     }
                     return self.async_create_entry(
                         title=title_map.get(self._subentry_type, self._subentry_type),

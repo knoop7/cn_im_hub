@@ -8,6 +8,7 @@
 - WeCom
 - QQ（WebSocket 网关）
 - DingTalk（Stream 模式）
+- WeChat（个人微信，agentwsserver）
 
 ## 当前实现
 
@@ -34,7 +35,7 @@
 
 1. 进入 `设置 -> 设备与服务 -> 中国即时通信合集`。
 2. 在该集成页面点击“添加服务/添加子项”。
-3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk`。
+3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk` / `WeChat`（个人微信）。
 4. 填写该平台凭据并保存。
 5. 每个平台是一个独立服务项，可单独进入设置更新或删除。
 
@@ -110,8 +111,17 @@
    ![钉钉-群内添加机器人](docs/images/dingtalk/dingtalk-step6-add-bot-in-group.png)
    ![钉钉-机器人回复示例](docs/images/dingtalk/dingtalk-step6-bot-reply.png)
 7. 回到 HA，在 DingTalk 子服务填写：
-   - `dingtalk_client_id` = 钉钉 `Client ID`
-   - `dingtalk_client_secret` = 钉钉 `Client Secret`
+    - `dingtalk_client_id` = 钉钉 `Client ID`
+    - `dingtalk_client_secret` = 钉钉 `Client Secret`
+
+### WeChat（个人微信）
+
+1. 准备可用的 `agentwsserver` 地址（`ws://...` 或 `wss://...`）。
+2. 在你的 `agentwsserver` 认证页面获取 token。
+3. 在 HA 集成页面添加 `WeChat` 子服务时：
+   - 第一步可填写认证链接（可选，方便记录/跳转）
+   - 第二步填写 `wechat_ws_url`、`wechat_token`
+4. 保存后状态传感器应进入 `connected`（或短暂 `connecting`）。
 
 常见踩坑（钉钉）：
 

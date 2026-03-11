@@ -23,6 +23,7 @@ from .const import (
     PROVIDER_DINGTALK,
     PROVIDER_FEISHU,
     PROVIDER_QQ,
+    PROVIDER_WECHAT,
     PROVIDER_WECOM,
     SERVICE_SEND_MESSAGE,
     SERVICE_TEST_CONVERSATION,
@@ -32,6 +33,7 @@ from .models import HubRuntime
 from .providers.feishu import async_setup_provider as async_setup_feishu
 from .providers.dingtalk import async_setup_provider as async_setup_dingtalk
 from .providers.qq import async_setup_provider as async_setup_qq
+from .providers.wechat import async_setup_provider as async_setup_wechat
 from .providers.wecom import async_setup_provider as async_setup_wecom
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +92,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         elif provider == PROVIDER_DINGTALK:
             runtimes[provider] = await async_setup_dingtalk(
+                hass,
+                cfg,
+                agent_id=agent_id,
+                subentry_id=subentry.subentry_id,
+            )
+        elif provider == PROVIDER_WECHAT:
+            runtimes[provider] = await async_setup_wechat(
                 hass,
                 cfg,
                 agent_id=agent_id,
