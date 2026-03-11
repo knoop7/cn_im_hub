@@ -108,12 +108,20 @@
 
 ### DingTalk（钉钉）
 
-1. 在钉钉开放平台创建企业内部应用并启用机器人能力。
-2. 获取 `Client ID` 与 `Client Secret`。
-3. 开启 Stream 模式（事件通过长连接接入）。
-4. 不使用 webhook 回调模式。
-5. 开通机器人消息收发所需权限。
-6. 在 HA 填写：`dingtalk_client_id`、`dingtalk_client_secret`。
+以下流程参考钉钉官方文档《将 OpenClaw 接入钉钉，创建你的 AI 助理员工》，并按本集成做了字段映射：
+
+1. 进入钉钉开放平台创建企业内部应用。
+2. 在应用能力中启用机器人能力（用于会话收发）。
+3. 在应用凭证页获取并保存 `Client ID` 与 `Client Secret`。
+4. 将机器人安装到需要测试的组织/群会话。
+5. 开通机器人消息收发相关权限。
+6. 启用 Stream 长连接接入（本集成不使用 webhook 回调）。
+7. 在 HA 的 DingTalk 子服务中填写：`dingtalk_client_id`、`dingtalk_client_secret`。
+
+参考图片（来自钉钉官方文档页）：
+
+![钉钉-OpenClaw 文档封面](docs/images/dingtalk/dingtalk-openclaw-cover.png)
+![钉钉开放平台图标](docs/images/dingtalk/dingtalk-favicon.png)
 
 ## 联调检查清单
 
@@ -131,6 +139,8 @@
   `https://github.com/ha-china/ha-feishu`
 - ha_wecom（企微后台配置与截图）：
   `https://github.com/ha-china/ha_wecom`
+- 钉钉官方文档（OpenClaw 接入）：
+  `https://open.dingtalk.com/document/dingstart/build-dingtalk-ai-employees`
 
 ## 目标地址格式（send_message）
 
