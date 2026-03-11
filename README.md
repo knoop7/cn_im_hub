@@ -92,20 +92,29 @@
 
 ### DingTalk（钉钉）
 
-（基于钉钉官方文档《将 OpenClaw 接入钉钉，创建你的 AI 助理员工》，按本集成做了精简）
+（基于钉钉官方文档《将 OpenClaw 接入钉钉，创建你的 AI 助理员工》）
 
-1. 在钉钉开放平台创建**企业内部应用**并启用机器人能力。  
-   ![钉钉-OpenClaw 文档封面](docs/images/dingtalk/dingtalk-openclaw-cover.png)
-2. 进入“凭证与基础信息”页面，记录：
-   - `Client ID`
-   - `Client Secret`
-3. 在权限管理中开通机器人消息收发相关权限（至少保证可接收消息、可回复消息）。
-4. 在事件/连接方式中启用 **Stream 长连接**，不要配置 webhook 回调地址。
-5. 将应用安装到目标企业或测试组织，并把机器人加入测试会话（群/私聊）。
-6. 回到 HA，在 DingTalk 子服务填写：
+1. 登录钉钉开发者后台，进入“应用开发”创建应用。  
+   ![钉钉-创建应用入口](docs/images/dingtalk/dingtalk-step1-create-app.png)
+2. 填写应用基础信息并保存，确认应用已出现在应用列表。  
+   ![钉钉-应用创建表单](docs/images/dingtalk/dingtalk-step1-app-form.png)
+   ![钉钉-应用列表](docs/images/dingtalk/dingtalk-step1-app-list.png)
+3. 在“凭证与基础信息”记录 `Client ID` 与 `Client Secret`。  
+   ![钉钉-凭证与基础信息](docs/images/dingtalk/dingtalk-step1-credentials.png)
+4. 进入应用详情，在“添加应用能力”中添加机器人能力，并在机器人配置中确认消息接收模式为 Stream。  
+   ![钉钉-应用详情](docs/images/dingtalk/dingtalk-step2-app-detail.png)
+   ![钉钉-添加机器人能力](docs/images/dingtalk/dingtalk-step2-add-bot-capability.png)
+   ![钉钉-机器人配置Stream](docs/images/dingtalk/dingtalk-step2-bot-config-stream.png)
+5. 在权限管理中添加权限：`Card.Streaming.Write`、`Card.Instance.Write`、`qyapi_robot_sendmsg`，然后创建新版本并发布。  
+   ![钉钉-权限配置](docs/images/dingtalk/dingtalk-step3-permissions.png)
+   ![钉钉-创建新版本](docs/images/dingtalk/dingtalk-step3-create-version.png)
+   ![钉钉-版本详情](docs/images/dingtalk/dingtalk-step3-version-detail.png)
+6. 把机器人添加到目标群进行联调，确认机器人可回复。  
+   ![钉钉-群内添加机器人](docs/images/dingtalk/dingtalk-step6-add-bot-in-group.png)
+   ![钉钉-机器人回复示例](docs/images/dingtalk/dingtalk-step6-bot-reply.png)
+7. 回到 HA，在 DingTalk 子服务填写：
    - `dingtalk_client_id` = 钉钉 `Client ID`
-   - `dingtalk_client_secret` = 钉钉 `Client Secret`  
-   ![钉钉开放平台图标](docs/images/dingtalk/dingtalk-favicon.png)
+   - `dingtalk_client_secret` = 钉钉 `Client Secret`
 
 常见踩坑（钉钉）：
 
