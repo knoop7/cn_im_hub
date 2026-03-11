@@ -92,14 +92,26 @@
 
 ### DingTalk（钉钉）
 
-（参考钉钉官方文档《将 OpenClaw 接入钉钉，创建你的 AI 助理员工》）
+（基于钉钉官方文档《将 OpenClaw 接入钉钉，创建你的 AI 助理员工》，按本集成做了精简）
 
-1. 在钉钉开放平台创建企业内部应用并启用机器人能力。  
+1. 在钉钉开放平台创建**企业内部应用**并启用机器人能力。  
    ![钉钉-OpenClaw 文档封面](docs/images/dingtalk/dingtalk-openclaw-cover.png)
-2. 在应用凭证页获取 `Client ID`、`Client Secret`，并开通消息收发权限。
-3. 将机器人安装到测试组织/群会话，启用 Stream 长连接接入（不使用 webhook）。
-4. 回到 HA 填写：`dingtalk_client_id`、`dingtalk_client_secret`。  
+2. 进入“凭证与基础信息”页面，记录：
+   - `Client ID`
+   - `Client Secret`
+3. 在权限管理中开通机器人消息收发相关权限（至少保证可接收消息、可回复消息）。
+4. 在事件/连接方式中启用 **Stream 长连接**，不要配置 webhook 回调地址。
+5. 将应用安装到目标企业或测试组织，并把机器人加入测试会话（群/私聊）。
+6. 回到 HA，在 DingTalk 子服务填写：
+   - `dingtalk_client_id` = 钉钉 `Client ID`
+   - `dingtalk_client_secret` = 钉钉 `Client Secret`  
    ![钉钉开放平台图标](docs/images/dingtalk/dingtalk-favicon.png)
+
+常见踩坑（钉钉）：
+
+- 已创建应用但收不到消息：通常是未安装到组织，或机器人未加入目标会话。
+- 凭据正确但发送失败：优先检查权限是否完整，以及应用是否已发布。
+- 能发不能收：优先检查是否启用了 Stream 长连接，且未误配 webhook 模式。
 
 ## 联调检查清单
 
