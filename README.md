@@ -2,12 +2,6 @@
 
 把中国常见即时通信平台聚合到一个 Home Assistant 集成中。
 
-## 设计目标
-
-- 默认添加集成时不启用任何服务
-- 在集成选项中选择并配置需要的服务
-- 各服务复用同一套消息路由与会话处理逻辑，便于扩展
-
 ## 当前支持
 
 - Feishu
@@ -15,10 +9,11 @@
 - QQ（WebSocket 网关）
 - DingTalk（Stream 模式）
 
-## 接入原则
+## 当前实现
 
-- 不接入需要 HTTP 回调且依赖公网暴露的模式
-- 优先使用长连接 / Stream / WebSocket 模式
+- 添加集成时只配置一次全局 `agent_id`
+- 各平台通过 subentry 独立添加、独立更新
+- 消息统一走自然语言会话（conversation agent）
 
 ## 在 Home Assistant 里的设置
 
@@ -38,7 +33,7 @@
 ### 3) 在集成页面添加服务（Subentry）
 
 1. 进入 `设置 -> 设备与服务 -> 中国即时通信合集`。
-2. 在该集成页面点击“添加服务/添加子项”（不同 HA 版本文案略有差异）。
+2. 在该集成页面点击“添加服务/添加子项”。
 3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk`。
 4. 填写该平台凭据并保存。
 5. 每个平台是一个独立服务项，可单独进入设置更新或删除。
@@ -54,7 +49,7 @@
 
 ## 平台后端设置
 
-说明：以下步骤按你最初参考的 `ha-feishu`、`ha_wecom` 与 Hello Claw 第三章整理，统一采用“主动外连（WebSocket/Stream）”，不要求公网回调地址。
+说明：以下步骤均为当前已支持并已接入的配置方式。
 
 ### Feishu（飞书）
 
@@ -76,7 +71,7 @@
    ![企微-接入方式](docs/images/wecom/wecom-setup-3-enter-chat.png)
 3. 在详情页保存 `bot_id` 与 `secret`。  
    ![企微-BotID与Secret](docs/images/wecom/wecom-setup-2-bot-id-secret.png)
-4. 确认机器人具备收发消息能力，不配置 webhook 公网回调。
+4. 确认机器人具备收发消息能力。
 5. 回到 HA 填写：`bot_id`、`secret`。
 
 ### QQ（QQ 开放平台机器人）
@@ -89,7 +84,7 @@
    ![QQ-部署信息](docs/images/qq/qq-bot-deploy-browser.png)
 3. 在 QQ 端做一次聊天验证，确认机器人已发布可用。  
    ![QQ-聊天测试](docs/images/qq/qq-bot-chat.jpg)
-4. 本集成使用 Gateway WebSocket，不配置 HTTP 回调地址。
+4. 本集成使用 Gateway WebSocket。
 5. 回到 HA 填写：`qq_app_id`、`qq_client_secret`。
 
 ### DingTalk（钉钉）
@@ -122,7 +117,7 @@
 
 - 已创建应用但收不到消息：通常是未安装到组织，或机器人未加入目标会话。
 - 凭据正确但发送失败：优先检查权限是否完整，以及应用是否已发布。
-- 能发不能收：优先检查是否启用了 Stream 长连接，且未误配 webhook 模式。
+- 能发不能收：优先检查是否启用了 Stream 长连接。
 
 ## 联调检查清单
 
@@ -130,7 +125,7 @@
 - 平台服务已作为独立 subentry 添加成功。
 - 平台凭据正确，且后台已发布/启用机器人能力。
 - 网络可从 HA 主动访问平台接口（飞书、企微、QQ、钉钉）。
-- 不配置公网回调 URL（本集成按主动外连设计）。
+- 所有平台子服务均已在集成页面成功添加。
 
 ## 参考来源
 
