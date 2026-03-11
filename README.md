@@ -117,11 +117,10 @@
 ### WeChat（个人微信）
 
 1. 在 HA 集成页面添加 `WeChat`（个人微信）子服务。
-2. 认证引导页可填写认证链接（可选），用于记录你获取 token 的入口。
-3. 第二步填写 `wechat_token`。
-4. 个人微信桥接端连接 HA 内置地址：
-   - `ws://<HA地址>:8123/api/cn_im_hub/wechat/ws?token=<wechat_token>`
-5. 连接后状态传感器会变为 `connected`。
+2. 流程会自动进入 OAuth 页面（外部步骤），扫码完成微信登录。
+3. 回到 HA 后点击提交，系统自动轮询并获取 token。
+4. 集成自动换取并保存 `Channel Token`。
+5. 保存后自动连接官方 WeChat AGP WebSocket（无需填写 `ws_url`）。
 
 常见踩坑（钉钉）：
 

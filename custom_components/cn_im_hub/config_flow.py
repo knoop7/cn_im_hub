@@ -27,7 +27,7 @@ from .const import (
     CONF_FEISHU_APP_SECRET,
     CONF_QQ_APP_ID,
     CONF_QQ_CLIENT_SECRET,
-    CONF_WECHAT_AUTH_URL,
+    CONF_WECHAT_GUID,
     CONF_WECHAT_TOKEN,
     CONF_WECOM_BOT_ID,
     CONF_WECOM_SECRET,
@@ -43,6 +43,13 @@ from .providers.feishu import async_validate_config as validate_feishu
 from .providers.qq import async_validate_config as validate_qq
 from .providers.wechat import async_validate_config as validate_wechat
 from .providers.wecom import async_validate_config as validate_wecom
+from .wechat_auth import (
+    async_exchange_code_for_channel_token,
+    async_get_login_state,
+    async_poll_qr_for_code,
+    async_prepare_qr_login,
+    build_auth_url,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -194,10 +201,6 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
         if self._subentry_type == PROVIDER_WECHAT:
             return vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_WECHAT_AUTH_URL,
-                        default=current.get(CONF_WECHAT_AUTH_URL, ""),
-                    ): str,
                     vol.Required(CONF_WECHAT_TOKEN, default=current.get(CONF_WECHAT_TOKEN, "")): str,
                 }
             )
@@ -223,8 +226,9 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
             return self.async_abort(reason="already_configured")
         self._current = {}
         if self._subentry_type == PROVIDER_WECHAT:
-            self._current[CONF_WECHAT_TOKEN] = uuid4().hex
-            return await self.async_step_auth_guide(user_input)
+            self._current[CONF_WECHAT_GUID] = uuid4().hex
+            await self._async_prepare_wechat_auth()
+            return await self.async_step_auth_wait(None)
         return await self.async_step_set_options(user_input)
 
     async def async_step_reconfigure(
@@ -233,30 +237,93 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
         self._current = dict(self._get_reconfigure_subentry().data)
         return await self.async_step_set_options(user_input)
 
-    async def async_step_auth_guide(
+    async def async_step_auth_wait(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show auth guide for WeChat token acquisition."""
-        if user_input is not None:
-            auth_url = str(user_input.get(CONF_WECHAT_AUTH_URL, "")).strip()
-            if auth_url:
-                self._current[CONF_WECHAT_AUTH_URL] = auth_url
-            return await self.async_step_set_options(None)
+        """Show QR and exchange token automatically in background."""
+        await self._async_prepare_wechat_auth()
+        auth_url = str(self._current.get("wechat_oauth_url", "")).strip()
+        qr_image_url = str(self._current.get("wechat_qr_image_url", "")).strip()
 
-        return self.async_show_form(
-            step_id="auth_guide",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_WECHAT_AUTH_URL,
-                        default=self._current.get(CONF_WECHAT_AUTH_URL, ""),
-                    ): str,
-                }
-            ),
-            description_placeholders={
-                "default_auth_url": "在你的个人微信桥接服务页面完成认证，复制 token 后继续。",
-            },
+        placeholders = {
+            "oauth_url": auth_url,
+            "qr_image_url": qr_image_url,
+        }
+
+        progress_task = self.async_get_progress_task()
+        if progress_task is None:
+            progress_task = self.hass.async_create_task(self._async_wait_and_exchange_wechat_token())
+
+        if not progress_task.done():
+            return self.async_show_progress(
+                step_id="auth_wait",
+                progress_action="wechat_qr_login",
+                description_placeholders=placeholders,
+                progress_task=progress_task,
+            )
+
+        try:
+            token = progress_task.result()
+        except Exception as err:
+            _LOGGER.warning("Wechat login exchange failed: %s", err)
+            self.async_cancel_progress_task()
+            return self.async_show_form(
+                step_id="auth_wait",
+                data_schema=vol.Schema({}),
+                errors={"base": "auth_not_confirmed"},
+                description_placeholders=placeholders,
+            )
+
+        self._current[CONF_WECHAT_TOKEN] = token
+        return self.async_show_progress_done(next_step_id="set_options")
+
+    async def _async_wait_and_exchange_wechat_token(self) -> str:
+        guid = str(self._current.get(CONF_WECHAT_GUID) or "")
+        state = str(self._current.get("wechat_state") or "")
+        qr_uuid = str(self._current.get("wechat_qr_uuid") or "")
+        if not guid or not state or not qr_uuid:
+            raise ValueError("wechat auth context missing")
+
+        code = await async_poll_qr_for_code(self.hass, qr_uuid=qr_uuid, timeout_seconds=180)
+        if not code:
+            raise ValueError("wechat auth not confirmed")
+
+        token, _ = await async_exchange_code_for_channel_token(
+            self.hass,
+            guid=guid,
+            code=code,
+            state=state,
         )
+        return token
+
+    async def _async_prepare_wechat_auth(self) -> None:
+        guid = str(self._current.get(CONF_WECHAT_GUID) or uuid4().hex)
+        self._current[CONF_WECHAT_GUID] = guid
+
+        state = str(self._current.get("wechat_state", "")).strip()
+        auth_url = str(self._current.get("wechat_oauth_url", "")).strip()
+        qr_uuid = str(self._current.get("wechat_qr_uuid", "")).strip()
+        if state and auth_url and qr_uuid:
+            return
+
+        try:
+            prepared = await async_prepare_qr_login(self.hass, guid)
+        except Exception as err:
+            _LOGGER.warning("Prepare WeChat OAuth failed: %s", err)
+            state = await async_get_login_state(self.hass, guid)
+            auth_url = build_auth_url(state)
+            qr_uuid = ""
+            qr_image_url = ""
+        else:
+            state = prepared["state"]
+            auth_url = prepared["auth_url"]
+            qr_uuid = prepared["qr_uuid"]
+            qr_image_url = prepared["qr_image_url"]
+
+        self._current["wechat_state"] = state
+        self._current["wechat_oauth_url"] = auth_url
+        self._current["wechat_qr_uuid"] = qr_uuid
+        self._current["wechat_qr_image_url"] = qr_image_url
 
     async def async_step_set_options(
         self, user_input: dict[str, Any] | None
@@ -265,6 +332,10 @@ class ProviderSubentryFlow(ConfigSubentryFlow):
 
         if user_input is not None:
             data = {k: str(v).strip() for k, v in user_input.items()}
+            if self._subentry_type == PROVIDER_WECHAT:
+                data[CONF_WECHAT_TOKEN] = data.get(CONF_WECHAT_TOKEN) or str(
+                    self._current.get(CONF_WECHAT_TOKEN, "")
+                )
             try:
                 await self._validate(data)
             except Exception as err:

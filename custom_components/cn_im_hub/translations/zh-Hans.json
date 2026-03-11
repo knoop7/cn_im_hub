@@ -8,7 +8,9 @@
     },
     "error": {
       "cannot_connect": "服务配置验证失败",
-      "agent_id_required": "必须填写 agent_id"
+      "agent_id_required": "必须填写 agent_id",
+      "invalid_auth_code": "回调链接或 code 无效",
+      "auth_not_confirmed": "扫码登录尚未确认"
     }
   },
   "options": {
@@ -94,18 +96,14 @@
         "reconfigure": "个人微信设置"
       },
       "step": {
-        "auth_guide": {
-          "title": "个人微信认证",
-          "description": "先在 agentwsserver 认证页面获取 token，再继续填写连接信息。\n\n认证提示：{default_auth_url}",
-          "data": {
-            "wechat_auth_url": "认证链接（可选）"
-          }
+        "auth_wait": {
+          "title": "等待微信登录确认",
+          "description": "请扫码并在微信中确认，系统会自动获取 token。\n\nOAuth 链接：{oauth_url}\n二维码图片：{qr_image_url}"
         },
         "set_options": {
-          "title": "添加个人微信",
+          "title": "个人微信设置",
           "data": {
-            "wechat_token": "Token",
-            "wechat_auth_url": "认证链接（可选）"
+            "wechat_token": "Channel Token"
           }
         }
       }

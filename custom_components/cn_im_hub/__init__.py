@@ -35,7 +35,6 @@ from .providers.dingtalk import async_setup_provider as async_setup_dingtalk
 from .providers.qq import async_setup_provider as async_setup_qq
 from .providers.wechat import async_setup_provider as async_setup_wechat
 from .providers.wecom import async_setup_provider as async_setup_wecom
-from .wechat_gateway import get_wechat_gateway_manager
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR]
@@ -58,7 +57,6 @@ SERVICE_TEST_CONVERSATION_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    get_wechat_gateway_manager(hass)
     return True
 
 

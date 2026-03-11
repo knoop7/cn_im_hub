@@ -30,7 +30,12 @@ CONF_DINGTALK_CLIENT_ID: Final = "dingtalk_client_id"
 CONF_DINGTALK_CLIENT_SECRET: Final = "dingtalk_client_secret"
 
 CONF_WECHAT_TOKEN: Final = "wechat_token"
-CONF_WECHAT_AUTH_URL: Final = "wechat_auth_url"
+CONF_WECHAT_GUID: Final = "wechat_guid"
+
+WECHAT_JPRX_GATEWAY: Final = "https://jprx.m.qq.com/"
+WECHAT_LOGIN_REDIRECT_URI: Final = "https://security.guanjia.qq.com/login"
+WECHAT_APP_ID: Final = "wx9d11056dd75b7240"
+WECHAT_DEFAULT_WS_URL: Final = "wss://mmgrcalltoken.3g.qq.com/agentwss"
 
 SERVICE_SEND_MESSAGE: Final = "send_message"
 SERVICE_TEST_CONVERSATION: Final = "test_conversation"

@@ -8,7 +8,9 @@
     },
     "error": {
       "cannot_connect": "Failed to validate provider config",
-      "agent_id_required": "agent_id is required"
+      "agent_id_required": "agent_id is required",
+      "invalid_auth_code": "Invalid callback URL or code",
+      "auth_not_confirmed": "QR login not confirmed yet"
     }
   },
   "options": {
@@ -94,18 +96,14 @@
         "reconfigure": "WeChat Settings"
       },
       "step": {
-        "auth_guide": {
-          "title": "WeChat Auth",
-          "description": "Open your agentwsserver auth page to obtain a token, then continue.\n\nAuth hint: {default_auth_url}",
-          "data": {
-            "wechat_auth_url": "Auth URL (optional)"
-          }
+        "auth_wait": {
+          "title": "Waiting for WeChat Login",
+          "description": "Scan the QR and confirm in WeChat. Token will be fetched automatically.\n\nOAuth URL: {oauth_url}\nQR image: {qr_image_url}"
         },
         "set_options": {
-          "title": "Add WeChat",
+          "title": "WeChat Settings",
           "data": {
-            "wechat_token": "Token",
-            "wechat_auth_url": "Auth URL (optional)"
+            "wechat_token": "Channel Token"
           }
         }
       }
