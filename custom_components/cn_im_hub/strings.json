@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "CN IM Hub",
+        "description": "Choose one global conversation agent. Providers are added later from this integration page."
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to validate provider config",
+      "agent_id_required": "agent_id is required"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Set Global Agent",
+        "description": "All providers use this single conversation agent."
+      }
+    },
+    "error": {
+      "agent_id_required": "agent_id is required"
+    }
+  },
+  "config_subentries": {
+    "feishu": {
+      "entry_type": "Feishu Service",
+      "initiate_flow": {
+        "user": "Add Feishu",
+        "reconfigure": "Feishu Settings"
+      },
+      "step": {
+        "set_options": {
+          "title": "Add Feishu",
+          "data": {
+            "app_id": "App ID",
+            "app_secret": "App Secret"
+          }
+        }
+      }
+    },
+    "wecom": {
+      "entry_type": "WeCom Service",
+      "initiate_flow": {
+        "user": "Add WeCom",
+        "reconfigure": "WeCom Settings"
+      },
+      "step": {
+        "set_options": {
+          "title": "Add WeCom",
+          "data": {
+            "bot_id": "Bot ID",
+            "secret": "Secret"
+          }
+        }
+      }
+    },
+    "qq": {
+      "entry_type": "QQ Service",
+      "initiate_flow": {
+        "user": "Add QQ",
+        "reconfigure": "QQ Settings"
+      },
+      "step": {
+        "set_options": {
+          "title": "Add QQ",
+          "data": {
+            "qq_app_id": "App ID",
+            "qq_client_secret": "App Secret"
+          }
+        }
+      }
+    },
+    "dingtalk": {
+      "entry_type": "DingTalk Service",
+      "initiate_flow": {
+        "user": "Add DingTalk",
+        "reconfigure": "DingTalk Settings"
+      },
+      "step": {
+        "set_options": {
+          "title": "Add DingTalk",
+          "data": {
+            "dingtalk_client_id": "Client ID",
+            "dingtalk_client_secret": "Client Secret"
+          }
+        }
+      }
+    }
+  }
+}

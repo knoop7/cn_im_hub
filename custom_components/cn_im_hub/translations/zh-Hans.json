@@ -1,0 +1,91 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "CN 即时通信 Hub",
+        "description": "先选择一个全局会话 agent。后续服务在集成页面中按按钮逐个添加。"
+      }
+    },
+    "error": {
+      "cannot_connect": "服务配置验证失败",
+      "agent_id_required": "必须填写 agent_id"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "设置全局 Agent",
+        "description": "所有服务统一使用这一个会话 Agent。"
+      }
+    },
+    "error": {
+      "agent_id_required": "必须填写 agent_id"
+    }
+  },
+  "config_subentries": {
+    "feishu": {
+      "entry_type": "飞书服务",
+      "initiate_flow": {
+        "user": "添加飞书",
+        "reconfigure": "飞书设置"
+      },
+      "step": {
+        "set_options": {
+          "title": "添加飞书",
+          "data": {
+            "app_id": "App ID",
+            "app_secret": "App Secret"
+          }
+        }
+      }
+    },
+    "wecom": {
+      "entry_type": "企微服务",
+      "initiate_flow": {
+        "user": "添加企微",
+        "reconfigure": "企微设置"
+      },
+      "step": {
+        "set_options": {
+          "title": "添加企微",
+          "data": {
+            "bot_id": "Bot ID",
+            "secret": "Secret"
+          }
+        }
+      }
+    },
+    "qq": {
+      "entry_type": "QQ服务",
+      "initiate_flow": {
+        "user": "添加QQ",
+        "reconfigure": "QQ设置"
+      },
+      "step": {
+        "set_options": {
+          "title": "添加QQ",
+          "data": {
+            "qq_app_id": "App ID",
+            "qq_client_secret": "App Secret"
+          }
+        }
+      }
+    },
+    "dingtalk": {
+      "entry_type": "钉钉服务",
+      "initiate_flow": {
+        "user": "添加钉钉",
+        "reconfigure": "钉钉设置"
+      },
+      "step": {
+        "set_options": {
+          "title": "添加钉钉",
+          "data": {
+            "dingtalk_client_id": "Client ID",
+            "dingtalk_client_secret": "Client Secret"
+          }
+        }
+      }
+    }
+  }
+}

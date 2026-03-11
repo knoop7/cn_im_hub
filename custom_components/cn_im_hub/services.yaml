@@ -1,0 +1,53 @@
+send_message:
+  name: Send Message
+  description: Send a message via selected IM provider.
+  fields:
+    provider:
+      required: false
+      example: feishu
+      selector:
+        select:
+          options:
+            - feishu
+            - wecom
+            - qq
+            - dingtalk
+    target:
+      required: false
+      selector:
+        text:
+    target_type:
+      required: false
+      default: chat_id
+      selector:
+        select:
+          options:
+            - chat_id
+            - open_id
+            - user_id
+            - union_id
+            - user
+            - group
+    message:
+      required: true
+      selector:
+        text:
+
+test_conversation:
+  name: Test Conversation
+  description: Test Home Assistant conversation response.
+  fields:
+    provider:
+      required: false
+      example: feishu
+      selector:
+        select:
+          options:
+            - feishu
+            - wecom
+            - qq
+            - dingtalk
+    text:
+      required: true
+      selector:
+        text:

@@ -1,0 +1,27 @@
+{
+  "domain": "cn_im_hub",
+  "name": "CN IM Hub",
+  "version": "0.1.0",
+  "documentation": "https://github.com/ha-china/cn_im_hub",
+  "issue_tracker": "https://github.com/ha-china/cn_im_hub/issues",
+  "codeowners": [
+    "@ha-china"
+  ],
+  "config_flow": true,
+  "iot_class": "cloud_push",
+  "integration_type": "hub",
+  "requirements": [
+    "lark-oapi>=1.4.14",
+    "dingtalk-stream>=0.23.0"
+  ],
+  "dependencies": [
+    "conversation"
+  ],
+  "after_dependencies": [
+    "conversation"
+  ],
+  "loggers": [
+    "custom_components.cn_im_hub",
+    "lark_oapi"
+  ]
+}

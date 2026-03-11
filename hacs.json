@@ -1,0 +1,11 @@
+{
+  "name": "CN IM Hub",
+  "content_in_root": false,
+  "domains": [
+    "cn_im_hub"
+  ],
+  "country": [
+    "CN"
+  ],
+  "homeassistant": "2024.8.0"
+}
