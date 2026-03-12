@@ -1,6 +1,6 @@
-# 中国即时通信合集
+# 即时通信合集
 
-把中国常见即时通信平台聚合到一个 Home Assistant 集成中。
+把常见即时通信平台聚合到一个 Home Assistant 集成中。
 
 ## 当前支持
 
@@ -8,7 +8,7 @@
 - WeCom
 - QQ（WebSocket 网关）
 - DingTalk（Stream 模式）
-- WeChat（个人微信，agentwsserver）
+- XiaoYi（小艺 A2A WebSocket）
 
 ## 当前实现
 
@@ -24,7 +24,7 @@
 
 1. 将本仓库部署到 HA 的 `custom_components/cn_im_hub`。
 2. 重启 Home Assistant。
-3. 进入 `设置 -> 设备与服务 -> 添加集成`，搜索 `中国即时通信合集`。
+3. 进入 `设置 -> 设备与服务 -> 添加集成`，搜索 `即时通信合集`。
 4. 添加时通过下拉列表选择一次全局 `agent_id`（后续所有平台共用）。
 
 ### 2) 首次添加行为
@@ -33,9 +33,9 @@
 
 ### 3) 在集成页面添加服务（Subentry）
 
-1. 进入 `设置 -> 设备与服务 -> 中国即时通信合集`。
+1. 进入 `设置 -> 设备与服务 -> 即时通信合集`。
 2. 在该集成页面点击“添加服务/添加子项”。
-3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk` / `WeChat`（个人微信）。
+3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk` / `XiaoYi`。
 4. 填写该平台凭据并保存。
 5. 每个平台是一个独立服务项，可单独进入设置更新或删除。
 
@@ -114,13 +114,32 @@
     - `dingtalk_client_id` = 钉钉 `Client ID`
     - `dingtalk_client_secret` = 钉钉 `Client Secret`
 
-### WeChat（个人微信）
+### XiaoYi（小艺）
 
-1. 在 HA 集成页面添加 `WeChat`（个人微信）子服务。
-2. 流程会自动进入 OAuth 页面（外部步骤），扫码完成微信登录。
-3. 回到 HA 后点击提交，系统自动轮询并获取 token。
-4. 集成自动换取并保存 `Channel Token`。
-5. 保存后自动连接官方 WeChat AGP WebSocket（无需填写 `ws_url`）。
+1. 在 HA 集成页面添加 `XiaoYi` 子服务。
+2. 填写 `Access Key`、`Secret Key`、`XiaoYi Agent ID`。
+3. 集成会自动使用默认双 WebSocket 地址连接小艺服务。
+
+### XiaoYi 后台创建流程（华为官方）
+
+1. 登录小艺开放平台，进入智能体平台后点击左上角“+创建智能体”。  
+   ![小艺-创建智能体入口](docs/images/xiaoyi/xiaoyi-step1-create-agent.png)
+2. 按官方创建流程填写名称、头像、描述、分类和设备信息，选择 `OpenClaw` 模式创建智能体。  
+   ![小艺-OpenClaw模式创建](docs/images/xiaoyi/xiaoyi-step2-openclaw-mode.png)
+3. 进入“OpenClaw基础配置”，如果还没有凭证，先到“工作空间 -> 凭证”新建 Key，并立即保存生成的 `AK/SK`。  
+   ![小艺-创建凭证](docs/images/xiaoyi/xiaoyi-step3-create-credential.png)
+4. 回到智能体配置页，按官方页面完成服务器 channel 配置；除替换 `ak/sk` 外，其它默认配置不要随意修改，并记录智能体对应的 `agentId`。  
+   ![小艺-channel配置](docs/images/xiaoyi/xiaoyi-step4-channel-config.png)
+5. 如果你在 OpenClaw 环境中联调，官方示例是在 `openclaw.json` 顶层 `channels` 中新增 `xiaoyi` 配置。  
+   ![小艺-openclaw配置示例](docs/images/xiaoyi/xiaoyi-step5-openclaw-json.png)
+6. 完成配置后重启网关并查看日志；官方示例里以 `sent claw_bot_init message` 作为建立连接成功的标志。  
+   ![小艺-openclaw日志](docs/images/xiaoyi/xiaoyi-step6-openclaw-logs.png)
+
+说明：
+
+- 本集成不是直接运行 OpenClaw，但小艺后台侧的创建逻辑是一致的：核心就是先创建 OpenClaw 模式智能体，再拿到 `AK/SK` 与 `agentId` 回填到 HA。
+- 华为官方文档里还提到：每个账号最多创建 1 个 OpenClaw 模式智能体。
+- 如果网页调试正常但设备侧还不可见，通常还需要在平台完成上架/发布流程。
 
 常见踩坑（钉钉）：
 
@@ -146,6 +165,12 @@
   `https://github.com/ha-china/ha_wecom`
 - 钉钉官方文档（OpenClaw 接入）：
   `https://open.dingtalk.com/document/dingstart/build-dingtalk-ai-employees`
+- 华为官方文档（OpenClaw 基础配置）：
+  `https://developer.huawei.com/consumer/cn/doc/service/open-claw-base-0000002518704040`
+- 华为官方文档（快速创建智能体）：
+  `https://developer.huawei.com/consumer/cn/doc/service/quick-start-0000002469548009`
+- 华为官方文档（OpenClaw 接入）：
+  `https://developer.huawei.com/consumer/cn/doc/service/openclaw-0000002518410344`
 
 ## 目标地址格式（send_message）
 

@@ -8,9 +8,7 @@
     },
     "error": {
       "cannot_connect": "Failed to validate provider config",
-      "agent_id_required": "agent_id is required",
-      "invalid_auth_code": "Invalid callback URL or code",
-      "auth_not_confirmed": "QR login not confirmed yet"
+      "agent_id_required": "agent_id is required"
     }
   },
   "options": {
@@ -89,21 +87,19 @@
         }
       }
     },
-    "wechat": {
-      "entry_type": "WeChat Service",
+    "xiaoyi": {
+      "entry_type": "XiaoYi",
       "initiate_flow": {
-        "user": "Add WeChat",
-        "reconfigure": "WeChat Settings"
+        "user": "Add XiaoYi",
+        "reconfigure": "XiaoYi Settings"
       },
       "step": {
-        "auth_wait": {
-          "title": "Waiting for WeChat Login",
-          "description": "Scan the QR and confirm in WeChat. Token will be fetched automatically.\n\nOAuth URL: {oauth_url}\nQR image: {qr_image_url}"
-        },
         "set_options": {
-          "title": "WeChat Settings",
+          "title": "Add XiaoYi",
           "data": {
-            "wechat_token": "Channel Token"
+            "xiaoyi_ak": "Access Key",
+            "xiaoyi_sk": "Secret Key",
+            "xiaoyi_agent_id": "XiaoYi Agent ID"
           }
         }
       }
