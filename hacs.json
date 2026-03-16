@@ -1,5 +1,5 @@
 {
-  "name": "中国即时通信合集",
+  "name": "即时通信合集",
   "content_in_root": false,
   "domains": [
     "cn_im_hub"
@@ -7,5 +7,5 @@
   "country": [
     "CN"
   ],
-  "homeassistant": "2024.8.0"
+  "homeassistant": "2025.3.0"
 }
