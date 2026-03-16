@@ -10,12 +10,14 @@ import uuid
 from typing import Any
 
 import aiohttp
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..command import execute_command, parse_command
 from ..const import CONF_WECOM_BOT_ID, CONF_WECOM_SECRET, PROVIDER_WECOM
 from ..models import ProviderRuntime
+from .base import ProviderSpec
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -228,3 +230,21 @@ async def async_setup_provider(
         send_text=_send,
         status=lambda: client.status,
     )
+
+
+def _build_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_WECOM_BOT_ID, default=current.get(CONF_WECOM_BOT_ID, "")): str,
+            vol.Required(CONF_WECOM_SECRET, default=current.get(CONF_WECOM_SECRET, "")): str,
+        }
+    )
+
+
+PROVIDER_SPEC = ProviderSpec(
+    key=PROVIDER_WECOM,
+    title="WeCom",
+    schema_builder=_build_schema,
+    validate_config=async_validate_config,
+    setup_provider=async_setup_provider,
+)

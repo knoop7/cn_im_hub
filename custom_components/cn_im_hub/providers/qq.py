@@ -9,12 +9,14 @@ import logging
 from typing import Any
 
 import aiohttp
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..command import execute_command, parse_command
 from ..const import CONF_QQ_APP_ID, CONF_QQ_CLIENT_SECRET, PROVIDER_QQ
 from ..models import ProviderRuntime
+from .base import ProviderSpec
 
 _LOGGER = logging.getLogger(__name__)
 _TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
@@ -223,3 +225,21 @@ async def async_setup_provider(
         send_text=_send,
         status=lambda: client.status,
     )
+
+
+def _build_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_QQ_APP_ID, default=current.get(CONF_QQ_APP_ID, "")): str,
+            vol.Required(CONF_QQ_CLIENT_SECRET, default=current.get(CONF_QQ_CLIENT_SECRET, "")): str,
+        }
+    )
+
+
+PROVIDER_SPEC = ProviderSpec(
+    key=PROVIDER_QQ,
+    title="QQ",
+    schema_builder=_build_schema,
+    validate_config=async_validate_config,
+    setup_provider=async_setup_provider,
+)

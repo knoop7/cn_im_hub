@@ -20,21 +20,23 @@ from .const import (
     CONF_AGENT_ID,
     DEFAULT_FEISHU_TARGET_TYPE,
     DOMAIN,
-    PROVIDER_DINGTALK,
-    PROVIDER_FEISHU,
-    PROVIDER_QQ,
-    PROVIDER_XIAOYI,
-    PROVIDER_WECOM,
     SERVICE_SEND_MESSAGE,
     SERVICE_TEST_CONVERSATION,
+    TARGET_TYPE_DINGTALK_GROUP,
+    TARGET_TYPE_DINGTALK_USER,
+    TARGET_TYPE_FEISHU_CHAT_ID,
+    TARGET_TYPE_FEISHU_OPEN_ID,
+    TARGET_TYPE_FEISHU_UNION_ID,
+    TARGET_TYPE_FEISHU_USER_ID,
+    TARGET_TYPE_OPTIONS,
+    TARGET_TYPE_QQ_CHANNEL,
+    TARGET_TYPE_QQ_GROUP,
+    TARGET_TYPE_QQ_USER,
+    TARGET_TYPE_WECOM_CHATID,
 )
 from .conversation import ask_home_assistant
 from .models import HubRuntime
-from .providers.feishu import async_setup_provider as async_setup_feishu
-from .providers.dingtalk import async_setup_provider as async_setup_dingtalk
-from .providers.qq import async_setup_provider as async_setup_qq
-from .providers.wecom import async_setup_provider as async_setup_wecom
-from .providers.xiaoyi import async_setup_provider as async_setup_xiaoyi
+from .providers.registry import get_provider_specs
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR]
@@ -44,7 +46,7 @@ SERVICE_SEND_MESSAGE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_PROVIDER): cv.string,
         vol.Required(ATTR_MESSAGE): cv.string,
         vol.Optional(ATTR_TARGET, default=""): cv.string,
-        vol.Optional(ATTR_TARGET_TYPE, default=DEFAULT_FEISHU_TARGET_TYPE): cv.string,
+        vol.Optional(ATTR_TARGET_TYPE, default=TARGET_TYPE_FEISHU_CHAT_ID): vol.In(TARGET_TYPE_OPTIONS),
     }
 )
 
@@ -66,44 +68,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Setting up CN IM Hub entry %s with %d subentries", entry.entry_id, len(entry.subentries))
 
     runtimes = {}
+    provider_specs = get_provider_specs()
     for subentry in entry.subentries.values():
         provider = subentry.subentry_type
         cfg = dict(subentry.data)
-        if provider == PROVIDER_FEISHU:
-            runtimes[provider] = await async_setup_feishu(
-                hass,
-                cfg,
-                agent_id=agent_id,
-                subentry_id=subentry.subentry_id,
-            )
-        elif provider == PROVIDER_WECOM:
-            runtimes[provider] = await async_setup_wecom(
-                hass,
-                cfg,
-                agent_id=agent_id,
-                subentry_id=subentry.subentry_id,
-            )
-        elif provider == PROVIDER_QQ:
-            runtimes[provider] = await async_setup_qq(
-                hass,
-                cfg,
-                agent_id=agent_id,
-                subentry_id=subentry.subentry_id,
-            )
-        elif provider == PROVIDER_DINGTALK:
-            runtimes[provider] = await async_setup_dingtalk(
-                hass,
-                cfg,
-                agent_id=agent_id,
-                subentry_id=subentry.subentry_id,
-            )
-        elif provider == PROVIDER_XIAOYI:
-            runtimes[provider] = await async_setup_xiaoyi(
-                hass,
-                cfg,
-                agent_id=agent_id,
-                subentry_id=subentry.subentry_id,
-            )
+        spec = provider_specs.get(provider)
+        if spec is None:
+            _LOGGER.warning("Unknown provider in subentry: %s", provider)
+            continue
+        runtimes[provider] = await spec.setup_provider(
+            hass,
+            cfg,
+            agent_id=agent_id,
+            subentry_id=subentry.subentry_id,
+        )
 
     entry.runtime_data = HubRuntime(providers=runtimes)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -153,6 +131,36 @@ def _resolve_provider(entry: ConfigEntry, requested: str | None) -> str | None:
     return None
 
 
+def _normalize_target_type(provider: str, target_type: str) -> str:
+    value = (target_type or "").strip()
+    if not value:
+        if provider == "feishu":
+            return DEFAULT_FEISHU_TARGET_TYPE
+        if provider == "dingtalk":
+            return "group"
+        return ""
+
+    namespaced = {
+        TARGET_TYPE_FEISHU_CHAT_ID: ("feishu", "chat_id"),
+        TARGET_TYPE_FEISHU_OPEN_ID: ("feishu", "open_id"),
+        TARGET_TYPE_FEISHU_USER_ID: ("feishu", "user_id"),
+        TARGET_TYPE_FEISHU_UNION_ID: ("feishu", "union_id"),
+        TARGET_TYPE_WECOM_CHATID: ("wecom", "chatid"),
+        TARGET_TYPE_QQ_USER: ("qq", "user"),
+        TARGET_TYPE_QQ_GROUP: ("qq", "group"),
+        TARGET_TYPE_QQ_CHANNEL: ("qq", "channel"),
+        TARGET_TYPE_DINGTALK_USER: ("dingtalk", "user"),
+        TARGET_TYPE_DINGTALK_GROUP: ("dingtalk", "group"),
+    }
+    mapped = namespaced.get(value)
+    if mapped is None:
+        raise ValueError(f"Unsupported target_type: {value}")
+    owner, normalized = mapped
+    if owner != provider:
+        raise ValueError(f"target_type '{value}' only applies to provider '{owner}'")
+    return normalized
+
+
 def _register_services(hass: HomeAssistant) -> None:
     async def _handle_send_message(call: ServiceCall) -> None:
         requested = call.data.get(ATTR_PROVIDER)
@@ -171,7 +179,8 @@ def _register_services(hass: HomeAssistant) -> None:
             provider = runtime.providers.get(selected)
             if provider is None:
                 continue
-            await provider.send_text(target, message, target_type)
+            normalized_target_type = _normalize_target_type(selected, str(target_type))
+            await provider.send_text(target, message, normalized_target_type)
             return
 
         _LOGGER.error("No matched provider runtime for send_message")

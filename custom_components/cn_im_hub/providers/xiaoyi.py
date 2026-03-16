@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 import aiohttp
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -32,6 +33,7 @@ from ..const import (
     XIAOYI_DEFAULT_WS_URL_2,
 )
 from ..models import ProviderRuntime
+from .base import ProviderSpec
 
 _LOGGER = logging.getLogger(__name__)
 _SERVER_IDS = ("server1", "server2")
@@ -525,3 +527,22 @@ async def async_setup_provider(
         send_text=_send,
         status=lambda: client.status,
     )
+
+
+def _build_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_XIAOYI_AK, default=current.get(CONF_XIAOYI_AK, "")): str,
+            vol.Required(CONF_XIAOYI_SK, default=current.get(CONF_XIAOYI_SK, "")): str,
+            vol.Required(CONF_XIAOYI_AGENT_ID, default=current.get(CONF_XIAOYI_AGENT_ID, "")): str,
+        }
+    )
+
+
+PROVIDER_SPEC = ProviderSpec(
+    key=PROVIDER_XIAOYI,
+    title="XiaoYi",
+    schema_builder=_build_schema,
+    validate_config=async_validate_config,
+    setup_provider=async_setup_provider,
+)

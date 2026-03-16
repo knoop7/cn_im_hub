@@ -8,7 +8,11 @@
     },
     "error": {
       "cannot_connect": "服务配置验证失败",
-      "agent_id_required": "必须填写 agent_id"
+      "agent_id_required": "必须填写 agent_id",
+      "auth_not_confirmed": "扫码登录尚未确认",
+      "bind_not_confirmed": "个人微信联系人绑定尚未确认",
+      "invite_code_required": "必须填写邀请码",
+      "invalid_invite_code": "邀请码验证失败"
     }
   },
   "options": {
@@ -84,6 +88,30 @@
             "dingtalk_client_id": "Client ID",
             "dingtalk_client_secret": "Client Secret"
           }
+        }
+      }
+    },
+    "wechat": {
+      "entry_type": "个人微信",
+      "initiate_flow": {
+        "user": "添加个人微信",
+        "reconfigure": "个人微信设置"
+      },
+      "step": {
+        "auth_wait": {
+          "title": "等待微信登录确认",
+          "description": "请用微信扫码并在手机上确认登录。确认后点击提交，系统会自动完成登录并继续绑定。\n\n{qr_markdown}\n\n二维码链接：{qr_image_url}"
+        },
+        "invite_code": {
+          "title": "填写邀请码",
+          "description": "当前微信账号还需要先完成邀请码验证，之后才能继续设备绑定。",
+          "data": {
+            "invite_code": "邀请码"
+          }
+        },
+        "bind_wait": {
+          "title": "绑定个人微信联系人",
+          "description": "请用控制端微信打开下面的链接或二维码，完成设备绑定；绑定成功后微信里才会出现对话入口。完成后点击提交。\n\n{contact_qr_markdown}\n\n联系人链接：{contact_url}"
         }
       }
     },

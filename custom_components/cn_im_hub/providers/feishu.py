@@ -14,6 +14,7 @@ from typing import Any
 import aiohttp
 import lark_oapi as lark
 import lark_oapi.ws.client as lark_ws_client
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -25,6 +26,7 @@ from ..const import (
     PROVIDER_FEISHU,
 )
 from ..models import ProviderRuntime
+from .base import ProviderSpec
 
 _LOGGER = logging.getLogger(__name__)
 _TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
@@ -380,3 +382,21 @@ async def async_setup_provider(
         send_text=_send,
         status=lambda: ws_client.status,
     )
+
+
+def _build_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_FEISHU_APP_ID, default=current.get(CONF_FEISHU_APP_ID, "")): str,
+            vol.Required(CONF_FEISHU_APP_SECRET, default=current.get(CONF_FEISHU_APP_SECRET, "")): str,
+        }
+    )
+
+
+PROVIDER_SPEC = ProviderSpec(
+    key=PROVIDER_FEISHU,
+    title="Feishu",
+    schema_builder=_build_schema,
+    validate_config=async_validate_config,
+    setup_provider=async_setup_provider,
+)

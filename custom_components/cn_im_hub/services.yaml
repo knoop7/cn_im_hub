@@ -13,22 +13,37 @@ send_message:
             - qq
             - dingtalk
             - wechat
+            - xiaoyi
     target:
       required: false
       selector:
         text:
     target_type:
       required: false
-      default: chat_id
+      default: feishu:chat_id
       selector:
         select:
           options:
-            - chat_id
-            - open_id
-            - user_id
-            - union_id
-            - user
-            - group
+            - label: Feishu / chat_id
+              value: feishu:chat_id
+            - label: Feishu / open_id
+              value: feishu:open_id
+            - label: Feishu / user_id
+              value: feishu:user_id
+            - label: Feishu / union_id
+              value: feishu:union_id
+            - label: WeCom / chatid
+              value: wecom:chatid
+            - label: QQ / user
+              value: qq:user
+            - label: QQ / group
+              value: qq:group
+            - label: QQ / channel
+              value: qq:channel
+            - label: DingTalk / user
+              value: dingtalk:user
+            - label: DingTalk / group
+              value: dingtalk:group
     message:
       required: true
       selector:
@@ -49,6 +64,7 @@ test_conversation:
             - qq
             - dingtalk
             - wechat
+            - xiaoyi
     text:
       required: true
       selector:

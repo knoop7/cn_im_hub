@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -16,6 +17,7 @@ from ..const import (
     PROVIDER_DINGTALK,
 )
 from ..models import ProviderRuntime
+from .base import ProviderSpec
 
 _LOGGER = logging.getLogger(__name__)
 _OAUTH_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
@@ -191,3 +193,21 @@ async def async_setup_provider(
         send_text=_send,
         status=lambda: client.status,
     )
+
+
+def _build_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_DINGTALK_CLIENT_ID, default=current.get(CONF_DINGTALK_CLIENT_ID, "")): str,
+            vol.Required(CONF_DINGTALK_CLIENT_SECRET, default=current.get(CONF_DINGTALK_CLIENT_SECRET, "")): str,
+        }
+    )
+
+
+PROVIDER_SPEC = ProviderSpec(
+    key=PROVIDER_DINGTALK,
+    title="DingTalk",
+    schema_builder=_build_schema,
+    validate_config=async_validate_config,
+    setup_provider=async_setup_provider,
+)
