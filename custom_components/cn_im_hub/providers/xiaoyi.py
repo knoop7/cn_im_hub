@@ -38,7 +38,9 @@ from .base import ProviderSpec
 _LOGGER = logging.getLogger(__name__)
 _SERVER_IDS = ("server1", "server2")
 _STABLE_CONNECTION_THRESHOLD = 30.0
-_MAX_RECONNECT_ATTEMPTS = 50
+_MAX_RECONNECT_ATTEMPTS = 0
+_WATCHDOG_INTERVAL = 20.0
+_WATCHDOG_TIMEOUT = 90.0
 
 
 @dataclass(slots=True)
@@ -76,6 +78,7 @@ class XiaoYiClient:
         self._reconnect_tasks: dict[str, asyncio.Task[None] | None] = {server_id: None for server_id in _SERVER_IDS}
         self._stable_tasks: dict[str, asyncio.Task[None] | None] = {server_id: None for server_id in _SERVER_IDS}
         self._app_heartbeat_task: asyncio.Task[None] | None = None
+        self._watchdog_task: asyncio.Task[None] | None = None
         self._active_prompts: dict[str, asyncio.Task[str]] = {}
         self._session_servers: dict[str, str] = {}
         self._stopping = False
@@ -99,6 +102,8 @@ class XiaoYiClient:
             raise RuntimeError("Failed to connect to both XiaoYi servers")
         if self._app_heartbeat_task is None:
             self._app_heartbeat_task = asyncio.create_task(self._app_heartbeat_loop())
+        if self._watchdog_task is None:
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
     async def stop(self) -> None:
         self._stopping = True
@@ -110,12 +115,16 @@ class XiaoYiClient:
                     task.cancel()
         if self._app_heartbeat_task is not None:
             self._app_heartbeat_task.cancel()
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
 
         pending = [*self._active_prompts.values()]
         for task_map in (self._listen_tasks, self._reconnect_tasks, self._stable_tasks):
             pending.extend(task for task in task_map.values() if task is not None)
         if self._app_heartbeat_task is not None:
             pending.append(self._app_heartbeat_task)
+        if self._watchdog_task is not None:
+            pending.append(self._watchdog_task)
         for task in pending:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
@@ -130,6 +139,7 @@ class XiaoYiClient:
         self._active_prompts.clear()
         self._session_servers.clear()
         self._app_heartbeat_task = None
+        self._watchdog_task = None
 
     async def send_text(self, _: str, __: str, ___: str) -> None:
         raise RuntimeError("XiaoYi does not support direct send_message without an active session")
@@ -212,7 +222,7 @@ class XiaoYiClient:
 
     async def _reconnect_server(self, server_id: str) -> None:
         state = self._states[server_id]
-        if state.reconnect_attempts >= _MAX_RECONNECT_ATTEMPTS:
+        if _MAX_RECONNECT_ATTEMPTS and state.reconnect_attempts >= _MAX_RECONNECT_ATTEMPTS:
             _LOGGER.error("XiaoYi %s reached max reconnect attempts", server_id)
             return
         delay = min(2 * (2**state.reconnect_attempts), 60)
@@ -252,6 +262,23 @@ class XiaoYiClient:
                             await ws.send_json(payload)
                         except Exception as err:  # noqa: BLE001
                             _LOGGER.debug("XiaoYi heartbeat send failed (%s): %s", server_id, err)
+        except asyncio.CancelledError:
+            raise
+
+    async def _watchdog_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(_WATCHDOG_INTERVAL)
+                now = time.time()
+                for server_id in _SERVER_IDS:
+                    ws = self._ws.get(server_id)
+                    state = self._states[server_id]
+                    if ws is None or ws.closed or not state.connected:
+                        continue
+                    if now - state.last_heartbeat > _WATCHDOG_TIMEOUT:
+                        _LOGGER.warning("XiaoYi %s heartbeat timeout, reconnecting", server_id)
+                        with contextlib.suppress(Exception):
+                            await ws.close()
         except asyncio.CancelledError:
             raise
 
