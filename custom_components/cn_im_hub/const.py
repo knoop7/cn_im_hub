@@ -10,9 +10,8 @@ PROVIDER_FEISHU: Final = "feishu"
 PROVIDER_WECOM: Final = "wecom"
 PROVIDER_QQ: Final = "qq"
 PROVIDER_DINGTALK: Final = "dingtalk"
-PROVIDER_WECHAT: Final = "wechat"
 PROVIDER_XIAOYI: Final = "xiaoyi"
-PROVIDERS: Final = (PROVIDER_FEISHU, PROVIDER_WECOM, PROVIDER_QQ, PROVIDER_DINGTALK, PROVIDER_WECHAT, PROVIDER_XIAOYI)
+PROVIDERS: Final = (PROVIDER_FEISHU, PROVIDER_WECOM, PROVIDER_QQ, PROVIDER_DINGTALK, PROVIDER_XIAOYI)
 
 CONF_ENABLED_PROVIDERS: Final = "enabled_providers"
 CONF_PROVIDERS: Final = "providers"
@@ -30,15 +29,6 @@ CONF_QQ_CLIENT_SECRET: Final = "qq_client_secret"
 CONF_DINGTALK_CLIENT_ID: Final = "dingtalk_client_id"
 CONF_DINGTALK_CLIENT_SECRET: Final = "dingtalk_client_secret"
 
-CONF_WECHAT_TOKEN: Final = "wechat_token"
-CONF_WECHAT_GUID: Final = "wechat_guid"
-CONF_WECHAT_JWT_TOKEN: Final = "wechat_jwt_token"
-CONF_WECHAT_USER_ID: Final = "wechat_user_id"
-CONF_WECHAT_LOGIN_KEY: Final = "wechat_login_key"
-CONF_WECHAT_API_KEY: Final = "wechat_api_key"
-CONF_WECHAT_WS_URL: Final = "wechat_ws_url"
-CONF_WECHAT_ENVIRONMENT: Final = "wechat_environment"
-
 CONF_XIAOYI_AK: Final = "xiaoyi_ak"
 CONF_XIAOYI_SK: Final = "xiaoyi_sk"
 CONF_XIAOYI_AGENT_ID: Final = "xiaoyi_agent_id"
@@ -47,11 +37,6 @@ CONF_XIAOYI_WS_URL_2: Final = "xiaoyi_ws_url_2"
 
 XIAOYI_DEFAULT_WS_URL_1: Final = "wss://hag.cloud.huawei.com/openclaw/v1/ws/link"
 XIAOYI_DEFAULT_WS_URL_2: Final = "wss://116.63.174.231/openclaw/v1/ws/link"
-
-WECHAT_JPRX_GATEWAY: Final = "https://jprx.m.qq.com/"
-WECHAT_LOGIN_REDIRECT_URI: Final = "https://security.guanjia.qq.com/login"
-WECHAT_APP_ID: Final = "wx9d11056dd75b7240"
-WECHAT_DEFAULT_WS_URL: Final = "wss://mmgrcalltoken.3g.qq.com/agentwss"
 
 SERVICE_SEND_MESSAGE: Final = "send_message"
 SERVICE_TEST_CONVERSATION: Final = "test_conversation"

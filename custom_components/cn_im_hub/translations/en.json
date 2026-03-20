@@ -9,10 +9,7 @@
     "error": {
       "cannot_connect": "Failed to validate provider config",
       "agent_id_required": "agent_id is required",
-      "auth_not_confirmed": "QR login not confirmed yet",
-      "bind_not_confirmed": "WeChat contact bind not confirmed yet",
-      "invite_code_required": "Invite code is required",
-      "invalid_invite_code": "Invite code verification failed"
+      "auth_not_confirmed": "QR login not confirmed yet"
     }
   },
   "options": {
@@ -88,30 +85,6 @@
             "dingtalk_client_id": "Client ID",
             "dingtalk_client_secret": "Client Secret"
           }
-        }
-      }
-    },
-    "wechat": {
-      "entry_type": "WeChat",
-      "initiate_flow": {
-        "user": "Add WeChat",
-        "reconfigure": "WeChat Settings"
-      },
-      "step": {
-        "auth_wait": {
-          "title": "Waiting for WeChat Login",
-          "description": "Scan the QR and confirm in WeChat. Token will be fetched automatically.\n\n{qr_markdown}\n\nQR URL: {qr_image_url}"
-        },
-        "invite_code": {
-          "title": "Enter Invite Code",
-          "description": "This WeChat account still needs invite verification before device binding can continue.",
-          "data": {
-            "invite_code": "Invite Code"
-          }
-        },
-        "bind_wait": {
-          "title": "Bind WeChat Contact",
-          "description": "Open this link in WeChat (or scan QR) to bind device chat contact. After opening and confirming, click Submit.\n\n{contact_qr_markdown}\n\nContact URL: {contact_url}"
         }
       }
     },

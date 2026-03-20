@@ -8,7 +8,6 @@
 - WeCom
 - QQ（WebSocket 网关）
 - DingTalk（Stream 模式）
-- WeChat（个人微信，agentwsserver）
 - XiaoYi（小艺 A2A WebSocket）
 
 ## 当前实现
@@ -36,7 +35,7 @@
 
 1. 进入 `设置 -> 设备与服务 -> 即时通信合集`。
 2. 在该集成页面点击“添加服务/添加子项”。
-3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk` / `WeChat`（个人微信） / `XiaoYi`。
+3. 选择要添加的平台：`Feishu` / `WeCom` / `QQ` / `DingTalk` / `XiaoYi`。
 4. 填写该平台凭据并保存。
 5. 每个平台是一个独立服务项，可单独进入设置更新或删除。
 
@@ -120,14 +119,6 @@
 1. 在 HA 集成页面添加 `XiaoYi` 子服务。
 2. 填写 `Access Key`、`Secret Key`、`XiaoYi Agent ID`。
 3. 集成会自动使用默认双 WebSocket 地址连接小艺服务。
-
-### WeChat（个人微信）
-
-1. 在 HA 集成页面添加 `WeChat`（个人微信）子服务。
-2. 页面会显示微信登录二维码，扫码并确认登录。
-3. 个人微信需要在 `https://qclaw.qq.com/` 申请邀请码，页面会提示输入邀请码完成校验。
-4. 登录成功后进入联系人绑定步骤，按页面链接/二维码完成绑定。
-5. 绑定完成后自动创建个人微信子服务并连接官方 WeChat AGP WebSocket。
 
 ### XiaoYi 后台创建流程（华为官方）
 

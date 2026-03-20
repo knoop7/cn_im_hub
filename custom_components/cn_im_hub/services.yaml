@@ -12,7 +12,6 @@ send_message:
             - wecom
             - qq
             - dingtalk
-            - wechat
             - xiaoyi
     target:
       required: false
@@ -63,7 +62,6 @@ test_conversation:
             - wecom
             - qq
             - dingtalk
-            - wechat
             - xiaoyi
     text:
       required: true
