@@ -88,6 +88,19 @@
         }
       }
     },
+    "wechat": {
+      "entry_type": "WeChat",
+      "initiate_flow": {
+        "user": "Add WeChat",
+        "reconfigure": "WeChat Settings"
+      },
+      "step": {
+        "auth_wait": {
+          "title": "Waiting for WeChat Login",
+          "description": "Scan the QR in WeChat and confirm on the phone. After confirmation, click Submit.\n\n{qr_markdown}\n\nQR URL: {qr_url}"
+        }
+      }
+    },
     "xiaoyi": {
       "entry_type": "XiaoYi",
       "initiate_flow": {

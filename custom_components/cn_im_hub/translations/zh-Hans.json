@@ -88,6 +88,19 @@
         }
       }
     },
+    "wechat": {
+      "entry_type": "个人微信",
+      "initiate_flow": {
+        "user": "添加个人微信",
+        "reconfigure": "个人微信设置"
+      },
+      "step": {
+        "auth_wait": {
+          "title": "等待微信登录确认",
+          "description": "请用微信扫码并在手机上确认登录，确认后点击提交。\n\n{qr_markdown}\n\n二维码链接：{qr_url}"
+        }
+      }
+    },
     "xiaoyi": {
       "entry_type": "小艺服务",
       "initiate_flow": {
