@@ -480,7 +480,7 @@ def _build_ws_ssl_context(url: str) -> ssl.SSLContext | bool:
     parsed = urlparse(url)
     if parsed.scheme != "wss" or not _is_ip_host(parsed.hostname or ""):
         return True
-    context = ssl.create_default_context()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     return context

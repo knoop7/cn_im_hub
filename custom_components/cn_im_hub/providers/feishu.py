@@ -12,8 +12,6 @@ from json import JSONDecodeError
 from typing import Any
 
 import aiohttp
-import lark_oapi as lark
-import lark_oapi.ws.client as lark_ws_client
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -31,6 +29,13 @@ from .base import ProviderSpec
 _LOGGER = logging.getLogger(__name__)
 _TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 _REPLY_MAX_LENGTH = 1800
+
+
+def _import_lark() -> tuple[Any, Any]:
+    import lark_oapi as lark
+    import lark_oapi.ws.client as lark_ws_client
+
+    return lark, lark_ws_client
 
 
 class FeishuApiClient:
@@ -68,6 +73,7 @@ class FeishuApiClient:
         content = json.dumps({"text": text}, ensure_ascii=False)
 
         def _send() -> None:
+            lark, _ = _import_lark()
             client = (
                 lark.Client.builder()
                 .app_id(self._app_id)
@@ -164,6 +170,7 @@ class FeishuWsClient:
             await asyncio.sleep(5)
 
     def _start_sync(self) -> None:
+        lark, lark_ws_client = _import_lark()
         if lark_ws_client.loop.is_running():
             worker_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(worker_loop)

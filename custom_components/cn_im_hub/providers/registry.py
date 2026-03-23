@@ -1,33 +1,34 @@
-"""Provider registry with auto-discovery."""
+"""Provider registry with explicit imports."""
 
 from __future__ import annotations
 
 from functools import lru_cache
-from importlib import import_module
-from pkgutil import iter_modules
 
 from ..provider_flow import build_simple_provider_flow
-from . import __path__ as PROVIDERS_PATH
 from .base import ProviderSpec
+from .dingtalk import PROVIDER_SPEC as DINGTALK_PROVIDER_SPEC
+from .feishu import PROVIDER_SPEC as FEISHU_PROVIDER_SPEC
+from .qq import PROVIDER_SPEC as QQ_PROVIDER_SPEC
+from .wechat import PROVIDER_SPEC as WECHAT_PROVIDER_SPEC
+from .wecom import PROVIDER_SPEC as WECOM_PROVIDER_SPEC
+from .xiaoyi import PROVIDER_SPEC as XIAOYI_PROVIDER_SPEC
 
-_SKIP_MODULES = {"base", "registry", "wechat_flow"}
+
+_PROVIDER_SPECS: tuple[ProviderSpec, ...] = (
+    FEISHU_PROVIDER_SPEC,
+    WECOM_PROVIDER_SPEC,
+    QQ_PROVIDER_SPEC,
+    DINGTALK_PROVIDER_SPEC,
+    WECHAT_PROVIDER_SPEC,
+    XIAOYI_PROVIDER_SPEC,
+)
 
 
 @lru_cache(maxsize=1)
 def get_provider_specs() -> dict[str, ProviderSpec]:
-    """Discover all provider specs from provider modules."""
+    """Return all registered provider specs."""
 
-    specs: dict[str, ProviderSpec] = {}
-    for module_info in iter_modules(PROVIDERS_PATH):
-        name = module_info.name
-        if name.startswith("_") or name in _SKIP_MODULES:
-            continue
-        module = import_module(f"{__package__}.{name}")
-        spec = getattr(module, "PROVIDER_SPEC", None)
-        if spec is None:
-            continue
-        specs[spec.key] = spec
-    return specs
+    return {spec.key: spec for spec in _PROVIDER_SPECS}
 
 
 def get_provider_spec(key: str) -> ProviderSpec:
