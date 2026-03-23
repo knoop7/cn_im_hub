@@ -40,7 +40,7 @@ _SERVER_IDS = ("server1", "server2")
 _STABLE_CONNECTION_THRESHOLD = 30.0
 _MAX_RECONNECT_ATTEMPTS = 0
 _WATCHDOG_INTERVAL = 20.0
-_WATCHDOG_TIMEOUT = 90.0
+_WATCHDOG_TIMEOUT = 0.0
 
 
 @dataclass(slots=True)
@@ -266,6 +266,8 @@ class XiaoYiClient:
             raise
 
     async def _watchdog_loop(self) -> None:
+        if _WATCHDOG_TIMEOUT <= 0:
+            return
         try:
             while True:
                 await asyncio.sleep(_WATCHDOG_INTERVAL)

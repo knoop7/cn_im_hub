@@ -6,7 +6,6 @@ import asyncio
 import base64
 import hashlib
 import json
-import logging
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
@@ -17,9 +16,8 @@ import segno
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import WECHAT_DEFAULT_BASE_URL
+from ..const import WECHAT_DEFAULT_BASE_URL
 
-_LOGGER = logging.getLogger(__name__)
 _QR_LONG_POLL_TIMEOUT_MS = 35_000
 _DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000
 _DEFAULT_API_TIMEOUT_MS = 15_000
@@ -216,6 +214,11 @@ def extract_text_body(message: dict[str, Any]) -> str:
         if item.get("type") == 1:
             text_item = item.get("text_item") or {}
             text = text_item.get("text")
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        if item.get("type") == 3:
+            voice_item = item.get("voice_item") or {}
+            text = voice_item.get("text")
             if isinstance(text, str) and text.strip():
                 return text.strip()
     return ""

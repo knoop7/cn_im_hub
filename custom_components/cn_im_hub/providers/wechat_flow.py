@@ -10,7 +10,7 @@ from homeassistant.config_entries import SubentryFlowResult
 
 from ..const import CONF_WECHAT_ACCOUNT_ID, CONF_WECHAT_BASE_URL, CONF_WECHAT_TOKEN, CONF_WECHAT_USER_ID, WECHAT_DEFAULT_BASE_URL
 from ..provider_flow import BaseProviderSubentryFlow
-from ..wechat_weixin_auth import async_start_weixin_login, async_wait_weixin_login
+from .wechat_auth import async_start_weixin_login, async_wait_weixin_login
 
 _LOGGER = logging.getLogger(__name__)
 

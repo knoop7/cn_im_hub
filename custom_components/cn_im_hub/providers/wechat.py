@@ -21,8 +21,8 @@ from ..const import (
     WECHAT_DEFAULT_BASE_URL,
 )
 from ..models import ProviderRuntime
-from ..wechat_weixin_auth import async_get_updates, async_send_weixin_text, extract_text_body
 from .base import ProviderSpec
+from .wechat_auth import async_get_updates, async_send_weixin_text, extract_text_body
 from .wechat_flow import WeixinProviderSubentryFlow
 
 _LOGGER = logging.getLogger(__name__)
