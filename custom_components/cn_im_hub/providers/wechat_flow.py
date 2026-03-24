@@ -7,12 +7,15 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import SubentryFlowResult
+from homeassistant.helpers.storage import Store
 
 from ..const import CONF_WECHAT_ACCOUNT_ID, CONF_WECHAT_BASE_URL, CONF_WECHAT_TOKEN, CONF_WECHAT_USER_ID, WECHAT_DEFAULT_BASE_URL
 from ..provider_flow import BaseProviderSubentryFlow
 from .wechat_auth import async_start_weixin_login, async_wait_weixin_login
 
 _LOGGER = logging.getLogger(__name__)
+_ACCOUNT_INDEX_STORE_VERSION = 1
+_ACCOUNT_INDEX_STORE_KEY = "cn_im_hub_wechat_accounts"
 
 
 class WeixinProviderSubentryFlow(BaseProviderSubentryFlow):
@@ -74,6 +77,7 @@ class WeixinProviderSubentryFlow(BaseProviderSubentryFlow):
             CONF_WECHAT_USER_ID: result.user_id,
             CONF_WECHAT_BASE_URL: result.base_url or str(self._current.get(CONF_WECHAT_BASE_URL, WECHAT_DEFAULT_BASE_URL)),
         }
+        await self._async_update_account_index(data)
         return await self._async_complete(data)
 
     async def _async_prepare_qr(self) -> None:
@@ -84,3 +88,23 @@ class WeixinProviderSubentryFlow(BaseProviderSubentryFlow):
         self._current["wechat_login_session"] = result
         self._current["wechat_qr_url"] = result.qrcode_url
         self._current["wechat_qr_data_url"] = result.qrcode_data_url
+
+    async def _async_update_account_index(self, data: dict[str, str]) -> None:
+        store: Store[dict[str, dict[str, str]]] = Store(
+            self.hass,
+            _ACCOUNT_INDEX_STORE_VERSION,
+            _ACCOUNT_INDEX_STORE_KEY,
+        )
+        current = await store.async_load() or {}
+        user_id = str(data.get(CONF_WECHAT_USER_ID, "")).strip()
+        account_id = str(data.get(CONF_WECHAT_ACCOUNT_ID, "")).strip()
+        if user_id:
+            stale_keys = [key for key, value in current.items() if key != account_id and value.get(CONF_WECHAT_USER_ID) == user_id]
+            for key in stale_keys:
+                current.pop(key, None)
+        if account_id:
+            current[account_id] = {
+                CONF_WECHAT_USER_ID: user_id,
+                CONF_WECHAT_BASE_URL: str(data.get(CONF_WECHAT_BASE_URL, WECHAT_DEFAULT_BASE_URL)),
+            }
+        await store.async_save(current)

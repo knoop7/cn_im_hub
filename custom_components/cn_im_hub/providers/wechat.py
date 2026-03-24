@@ -22,11 +22,15 @@ from ..const import (
 )
 from ..models import ProviderRuntime
 from .base import ProviderSpec
-from .wechat_auth import async_get_updates, async_send_weixin_text, extract_text_body
+from .wechat_auth import SESSION_EXPIRED_ERRCODE, async_get_updates, async_send_weixin_text, extract_text_body
 from .wechat_flow import WeixinProviderSubentryFlow
 
 _LOGGER = logging.getLogger(__name__)
 _STORE_VERSION = 1
+_MAX_CONSECUTIVE_FAILURES = 3
+_BACKOFF_DELAY_SECONDS = 30
+_RETRY_DELAY_SECONDS = 2
+_SESSION_PAUSE_SECONDS = 3600
 
 
 class WeixinClient:
@@ -54,8 +58,9 @@ class WeixinClient:
         self._stopping = False
         self._status = "disconnected"
         self._context_tokens: dict[str, str] = {}
-        self._store: Store[dict[str, str]] = Store(hass, _STORE_VERSION, f"cn_im_hub_wechat_{subentry_id}")
+        self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"cn_im_hub_wechat_{subentry_id}")
         self._sync_buf = ""
+        self._pause_until = 0.0
 
     @property
     def status(self) -> str:
@@ -64,6 +69,9 @@ class WeixinClient:
     async def start(self) -> None:
         data = await self._store.async_load() or {}
         self._sync_buf = str(data.get("get_updates_buf") or "")
+        tokens = data.get("context_tokens") or {}
+        if isinstance(tokens, dict):
+            self._context_tokens = {str(key): str(value) for key, value in tokens.items() if value}
         self._stopping = False
         if self._task is None:
             self._task = asyncio.create_task(self._run())
@@ -84,6 +92,11 @@ class WeixinClient:
         consecutive_failures = 0
         next_timeout_ms = 35_000
         while not self._stopping:
+            remaining_pause = self._remaining_pause_seconds()
+            if remaining_pause > 0:
+                self._status = "paused"
+                await asyncio.sleep(remaining_pause)
+                continue
             self._status = "connected" if consecutive_failures == 0 else "reconnecting"
             try:
                 resp = await async_get_updates(
@@ -93,13 +106,38 @@ class WeixinClient:
                     get_updates_buf=self._sync_buf,
                     timeout_ms=next_timeout_ms,
                 )
+                errcode = self._extract_error_code(resp)
+                if errcode == SESSION_EXPIRED_ERRCODE:
+                    self._pause_session()
+                    _LOGGER.warning(
+                        "Weixin session expired for account %s, pausing for %s minutes",
+                        self._account_id,
+                        _SESSION_PAUSE_SECONDS // 60,
+                    )
+                    consecutive_failures = 0
+                    continue
+                if self._is_api_error(resp):
+                    consecutive_failures += 1
+                    _LOGGER.warning(
+                        "Weixin getupdates failed (%s/%s) account=%s ret=%s errcode=%s errmsg=%s",
+                        consecutive_failures,
+                        _MAX_CONSECUTIVE_FAILURES,
+                        self._account_id,
+                        resp.get("ret"),
+                        resp.get("errcode"),
+                        resp.get("errmsg"),
+                    )
+                    await asyncio.sleep(_BACKOFF_DELAY_SECONDS if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES else _RETRY_DELAY_SECONDS)
+                    if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                        consecutive_failures = 0
+                    continue
                 consecutive_failures = 0
                 if isinstance(resp.get("longpolling_timeout_ms"), int) and resp["longpolling_timeout_ms"] > 0:
                     next_timeout_ms = int(resp["longpolling_timeout_ms"])
                 new_buf = str(resp.get("get_updates_buf") or "")
                 if new_buf and new_buf != self._sync_buf:
                     self._sync_buf = new_buf
-                    await self._store.async_save({"get_updates_buf": self._sync_buf})
+                    await self._async_save_state()
                 for message in resp.get("msgs") or []:
                     if not isinstance(message, dict):
                         continue
@@ -123,6 +161,7 @@ class WeixinClient:
         context_token = str(message.get("context_token") or "").strip()
         if context_token:
             self._context_tokens[from_user_id] = context_token
+            await self._async_save_state()
 
         command = parse_command(text)
         if command is None:
@@ -147,6 +186,35 @@ class WeixinClient:
             context_token=resolved_context,
             text=reply,
         )
+
+    async def _async_save_state(self) -> None:
+        await self._store.async_save(
+            {
+                "get_updates_buf": self._sync_buf,
+                "context_tokens": self._context_tokens,
+            }
+        )
+
+    def _pause_session(self) -> None:
+        self._pause_until = asyncio.get_running_loop().time() + _SESSION_PAUSE_SECONDS
+
+    def _remaining_pause_seconds(self) -> float:
+        remaining = self._pause_until - asyncio.get_running_loop().time()
+        return remaining if remaining > 0 else 0.0
+
+    @staticmethod
+    def _extract_error_code(resp: dict[str, Any]) -> int | None:
+        for key in ("errcode", "ret"):
+            value = resp.get(key)
+            if isinstance(value, int):
+                return value
+        return None
+
+    @staticmethod
+    def _is_api_error(resp: dict[str, Any]) -> bool:
+        errcode = resp.get("errcode")
+        ret = resp.get("ret")
+        return (isinstance(errcode, int) and errcode != 0) or (isinstance(ret, int) and ret != 0)
 
 
 async def async_validate_config(_: HomeAssistant, config: dict[str, Any]) -> None:
