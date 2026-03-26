@@ -39,7 +39,7 @@ class WeixinProviderSubentryFlow(BaseProviderSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         self._current = dict(self._get_reconfigure_subentry().data)
-        return await self.async_step_set_options(user_input)
+        return self.async_abort(reason="reconfigure_not_supported")
 
     async def async_step_auth_wait(
         self, user_input: dict[str, Any] | None = None

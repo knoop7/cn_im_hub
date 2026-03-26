@@ -1,7 +1,7 @@
 {
   "domain": "cn_im_hub",
   "name": "即时通信合集",
-  "version": "2026.03.6",
+  "version": "2026.03.7",
   "homeassistant": "2025.3.0",
   "documentation": "https://github.com/ha-china/cn_im_hub",
   "issue_tracker": "https://github.com/ha-china/cn_im_hub/issues",
