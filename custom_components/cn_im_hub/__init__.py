@@ -12,51 +12,36 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    ATTR_CHANNEL,
     ATTR_MESSAGE,
-    ATTR_PROVIDER,
     ATTR_TARGET,
-    ATTR_TARGET_TYPE,
-    ATTR_TEXT,
+    CHANNEL_DINGTALK_GROUP,
+    CHANNEL_DINGTALK_USER,
+    CHANNEL_FEISHU_CHAT_ID,
+    CHANNEL_OPTIONS,
+    CHANNEL_QQ_CHANNEL,
+    CHANNEL_QQ_GROUP,
+    CHANNEL_QQ_USER,
+    CHANNEL_WECHAT_USER_ID,
+    CHANNEL_WECOM_CHATID,
     CONF_AGENT_ID,
-    DEFAULT_FEISHU_TARGET_TYPE,
     DOMAIN,
     SERVICE_SEND_MESSAGE,
-    SERVICE_TEST_CONVERSATION,
-    TARGET_TYPE_DINGTALK_GROUP,
-    TARGET_TYPE_DINGTALK_USER,
-    TARGET_TYPE_FEISHU_CHAT_ID,
-    TARGET_TYPE_FEISHU_OPEN_ID,
-    TARGET_TYPE_FEISHU_UNION_ID,
-    TARGET_TYPE_FEISHU_USER_ID,
-    TARGET_TYPE_OPTIONS,
-    TARGET_TYPE_QQ_CHANNEL,
-    TARGET_TYPE_QQ_GROUP,
-    TARGET_TYPE_QQ_USER,
-    TARGET_TYPE_WECOM_CHATID,
 )
-from .conversation import ask_home_assistant
 from .models import HubRuntime
 from .providers.registry import get_provider_specs
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.SELECT]
 
 SERVICE_SEND_MESSAGE_SCHEMA = vol.Schema(
     {
-        vol.Optional(ATTR_PROVIDER): cv.string,
+        vol.Required(ATTR_CHANNEL, default=CHANNEL_FEISHU_CHAT_ID): vol.In(CHANNEL_OPTIONS),
         vol.Required(ATTR_MESSAGE): cv.string,
         vol.Optional(ATTR_TARGET, default=""): cv.string,
-        vol.Optional(ATTR_TARGET_TYPE, default=TARGET_TYPE_FEISHU_CHAT_ID): vol.In(TARGET_TYPE_OPTIONS),
+        vol.Optional("use_selected_target", default=False): cv.boolean,
     }
 )
-
-SERVICE_TEST_CONVERSATION_SCHEMA = vol.Schema(
-    {
-        vol.Optional(ATTR_PROVIDER): cv.string,
-        vol.Required(ATTR_TEXT): cv.string,
-    }
-)
-
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
@@ -112,8 +97,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not has_any_provider:
         if hass.services.has_service(DOMAIN, SERVICE_SEND_MESSAGE):
             hass.services.async_remove(DOMAIN, SERVICE_SEND_MESSAGE)
-        if hass.services.has_service(DOMAIN, SERVICE_TEST_CONVERSATION):
-            hass.services.async_remove(DOMAIN, SERVICE_TEST_CONVERSATION)
 
     return unload_ok
 
@@ -131,44 +114,33 @@ def _resolve_provider(entry: ConfigEntry, requested: str | None) -> str | None:
     return None
 
 
-def _normalize_target_type(provider: str, target_type: str) -> str:
-    value = (target_type or "").strip()
-    if not value:
-        if provider == "feishu":
-            return DEFAULT_FEISHU_TARGET_TYPE
-        if provider == "dingtalk":
-            return "group"
-        return ""
-
-    namespaced = {
-        TARGET_TYPE_FEISHU_CHAT_ID: ("feishu", "chat_id"),
-        TARGET_TYPE_FEISHU_OPEN_ID: ("feishu", "open_id"),
-        TARGET_TYPE_FEISHU_USER_ID: ("feishu", "user_id"),
-        TARGET_TYPE_FEISHU_UNION_ID: ("feishu", "union_id"),
-        TARGET_TYPE_WECOM_CHATID: ("wecom", "chatid"),
-        TARGET_TYPE_QQ_USER: ("qq", "user"),
-        TARGET_TYPE_QQ_GROUP: ("qq", "group"),
-        TARGET_TYPE_QQ_CHANNEL: ("qq", "channel"),
-        TARGET_TYPE_DINGTALK_USER: ("dingtalk", "user"),
-        TARGET_TYPE_DINGTALK_GROUP: ("dingtalk", "group"),
+def _parse_channel(channel: str) -> tuple[str, str]:
+    value = (channel or "").strip()
+    mapping = {
+        CHANNEL_FEISHU_CHAT_ID: ("feishu", "chat_id"),
+        CHANNEL_WECOM_CHATID: ("wecom", "chatid"),
+        CHANNEL_QQ_USER: ("qq", "user"),
+        CHANNEL_QQ_GROUP: ("qq", "group"),
+        CHANNEL_QQ_CHANNEL: ("qq", "channel"),
+        CHANNEL_DINGTALK_USER: ("dingtalk", "user"),
+        CHANNEL_DINGTALK_GROUP: ("dingtalk", "group"),
+        CHANNEL_WECHAT_USER_ID: ("wechat", "user_id"),
     }
-    mapped = namespaced.get(value)
+    mapped = mapping.get(value)
     if mapped is None:
-        raise ValueError(f"Unsupported target_type: {value}")
-    owner, normalized = mapped
-    if owner != provider:
-        raise ValueError(f"target_type '{value}' only applies to provider '{owner}'")
-    return normalized
+        raise ValueError(f"Unsupported channel: {value}")
+    return mapped
 
 
 def _register_services(hass: HomeAssistant) -> None:
     async def _handle_send_message(call: ServiceCall) -> None:
-        requested = call.data.get(ATTR_PROVIDER)
+        channel = str(call.data.get(ATTR_CHANNEL, CHANNEL_FEISHU_CHAT_ID))
         target = call.data.get(ATTR_TARGET, "")
         message = call.data.get(ATTR_MESSAGE, "")
-        target_type = call.data.get(ATTR_TARGET_TYPE, DEFAULT_FEISHU_TARGET_TYPE)
+        use_selected_target = bool(call.data.get("use_selected_target", False))
         if not message:
             return
+        requested, normalized_target_type = _parse_channel(channel)
 
         entries = hass.config_entries.async_entries(DOMAIN)
         for entry in entries:
@@ -179,26 +151,15 @@ def _register_services(hass: HomeAssistant) -> None:
             provider = runtime.providers.get(selected)
             if provider is None:
                 continue
-            normalized_target_type = _normalize_target_type(selected, str(target_type))
-            await provider.send_text(target, message, normalized_target_type)
+            resolved_target = str(target or "").strip()
+            if use_selected_target and not resolved_target:
+                resolved_target = provider.selected_target()
+            if not resolved_target:
+                raise ValueError("target is required, or enable use_selected_target after selecting a known target entity")
+            await provider.send_text(resolved_target, message, normalized_target_type)
             return
 
         _LOGGER.error("No matched provider runtime for send_message")
-
-    async def _handle_test_conversation(call: ServiceCall) -> None:
-        text = call.data[ATTR_TEXT]
-        provider = call.data.get(ATTR_PROVIDER, "default")
-        agent_id = ""
-        entries = hass.config_entries.async_entries(DOMAIN)
-        if entries:
-            agent_id = str(entries[0].options.get(CONF_AGENT_ID, "")).strip()
-        reply = await ask_home_assistant(
-            hass,
-            text,
-            conversation_id=f"test:{provider}",
-            agent_id=agent_id or None,
-        )
-        _LOGGER.info("Test conversation provider=%s input=%s reply=%s", provider, text, reply)
 
     if not hass.services.has_service(DOMAIN, SERVICE_SEND_MESSAGE):
         hass.services.async_register(
@@ -206,12 +167,4 @@ def _register_services(hass: HomeAssistant) -> None:
             SERVICE_SEND_MESSAGE,
             _handle_send_message,
             schema=SERVICE_SEND_MESSAGE_SCHEMA,
-        )
-
-    if not hass.services.has_service(DOMAIN, SERVICE_TEST_CONVERSATION):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_TEST_CONVERSATION,
-            _handle_test_conversation,
-            schema=SERVICE_TEST_CONVERSATION_SCHEMA,
         )

@@ -23,6 +23,7 @@ from ..const import (
     DEFAULT_FEISHU_TARGET_TYPE,
     PROVIDER_FEISHU,
 )
+from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
 
@@ -326,6 +327,7 @@ async def async_setup_provider(
 
     api_client = FeishuApiClient(hass, app_id, app_secret)
     await api_client.async_validate_connection()
+    tracker = await async_get_tracker(hass, subentry_id)
 
     async def _handle_message(message: dict[str, str]) -> None:
         chat_id = message.get("chat_id", "")
@@ -335,6 +337,12 @@ async def async_setup_provider(
         receive_type = "chat_id" if chat_id else "open_id"
         if not receive_id or not text:
             return
+        await tracker.async_record(
+            provider=PROVIDER_FEISHU,
+            target=receive_id,
+            target_type=receive_type,
+            display_name=user_id or chat_id,
+        )
 
         async def _reply(reply_text: str) -> None:
             await api_client.async_send_safe_reply(
@@ -388,6 +396,9 @@ async def async_setup_provider(
         stop=ws_client.async_stop,
         send_text=_send,
         status=lambda: ws_client.status,
+        known_targets=tracker.snapshot,
+        selected_target=tracker.selected_target,
+        select_target=tracker.async_select_target,
     )
 
 

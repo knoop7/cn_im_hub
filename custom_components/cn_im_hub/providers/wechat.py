@@ -20,6 +20,7 @@ from ..const import (
     PROVIDER_WECHAT,
     WECHAT_DEFAULT_BASE_URL,
 )
+from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
 from .wechat_auth import SESSION_EXPIRED_ERRCODE, async_get_updates, async_send_weixin_text, extract_text_body
@@ -61,6 +62,7 @@ class WeixinClient:
         self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"cn_im_hub_wechat_{subentry_id}")
         self._sync_buf = ""
         self._pause_until = 0.0
+        self._tracker = None
 
     @property
     def status(self) -> str:
@@ -85,8 +87,19 @@ class WeixinClient:
             self._task = None
         self._status = "disconnected"
 
-    async def send_text(self, _: str, __: str, ___: str) -> None:
-        raise RuntimeError("Weixin provider does not support direct send_message without active context")
+    async def send_text(self, target: str, text: str, _: str) -> None:
+        target = target.strip()
+        if not target:
+            raise ValueError("Weixin target user_id is required")
+        context_token = self._context_tokens.get(target, "")
+        await async_send_weixin_text(
+            self._hass,
+            base_url=self._base_url,
+            token=self._token,
+            to_user_id=target,
+            context_token=context_token,
+            text=text,
+        )
 
     async def _run(self) -> None:
         consecutive_failures = 0
@@ -158,6 +171,13 @@ class WeixinClient:
         text = extract_text_body(message)
         if not text:
             return
+        if self._tracker is not None:
+            await self._tracker.async_record(
+                provider=PROVIDER_WECHAT,
+                target=from_user_id,
+                target_type="user_id",
+                display_name=from_user_id,
+            )
         context_token = str(message.get("context_token") or "").strip()
         if context_token:
             self._context_tokens[from_user_id] = context_token
@@ -240,6 +260,8 @@ async def async_setup_provider(
         conversation_agent_id=agent_id,
         subentry_id=subentry_id,
     )
+    tracker = await async_get_tracker(hass, subentry_id)
+    client._tracker = tracker
     await client.start()
 
     async def _send(target: str, message: str, target_type: str) -> None:
@@ -253,6 +275,9 @@ async def async_setup_provider(
         stop=client.stop,
         send_text=_send,
         status=lambda: client.status,
+        known_targets=tracker.snapshot,
+        selected_target=tracker.selected_target,
+        select_target=tracker.async_select_target,
     )
 
 

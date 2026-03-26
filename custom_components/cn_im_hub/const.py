@@ -48,36 +48,32 @@ XIAOYI_DEFAULT_WS_URL_2: Final = "wss://116.63.174.231/openclaw/v1/ws/link"
 WECHAT_DEFAULT_BASE_URL: Final = "https://ilinkai.weixin.qq.com"
 
 SERVICE_SEND_MESSAGE: Final = "send_message"
-SERVICE_TEST_CONVERSATION: Final = "test_conversation"
 
 ATTR_PROVIDER: Final = "provider"
 ATTR_TARGET: Final = "target"
 ATTR_MESSAGE: Final = "message"
 ATTR_TEXT: Final = "text"
 ATTR_TARGET_TYPE: Final = "target_type"
+ATTR_CHANNEL: Final = "channel"
 
 DEFAULT_FEISHU_TARGET_TYPE: Final = "chat_id"
 
-TARGET_TYPE_FEISHU_CHAT_ID: Final = "feishu:chat_id"
-TARGET_TYPE_FEISHU_OPEN_ID: Final = "feishu:open_id"
-TARGET_TYPE_FEISHU_USER_ID: Final = "feishu:user_id"
-TARGET_TYPE_FEISHU_UNION_ID: Final = "feishu:union_id"
-TARGET_TYPE_WECOM_CHATID: Final = "wecom:chatid"
-TARGET_TYPE_QQ_USER: Final = "qq:user"
-TARGET_TYPE_QQ_GROUP: Final = "qq:group"
-TARGET_TYPE_QQ_CHANNEL: Final = "qq:channel"
-TARGET_TYPE_DINGTALK_USER: Final = "dingtalk:user"
-TARGET_TYPE_DINGTALK_GROUP: Final = "dingtalk:group"
+CHANNEL_FEISHU_CHAT_ID: Final = "feishu/chat_id"
+CHANNEL_WECOM_CHATID: Final = "wecom/chatid"
+CHANNEL_QQ_USER: Final = "qq/user"
+CHANNEL_QQ_GROUP: Final = "qq/group"
+CHANNEL_QQ_CHANNEL: Final = "qq/channel"
+CHANNEL_DINGTALK_USER: Final = "dingtalk/user"
+CHANNEL_DINGTALK_GROUP: Final = "dingtalk/group"
+CHANNEL_WECHAT_USER_ID: Final = "wechat/user_id"
 
-TARGET_TYPE_OPTIONS: Final = (
-    TARGET_TYPE_FEISHU_CHAT_ID,
-    TARGET_TYPE_FEISHU_OPEN_ID,
-    TARGET_TYPE_FEISHU_USER_ID,
-    TARGET_TYPE_FEISHU_UNION_ID,
-    TARGET_TYPE_WECOM_CHATID,
-    TARGET_TYPE_QQ_USER,
-    TARGET_TYPE_QQ_GROUP,
-    TARGET_TYPE_QQ_CHANNEL,
-    TARGET_TYPE_DINGTALK_USER,
-    TARGET_TYPE_DINGTALK_GROUP,
+CHANNEL_OPTIONS: Final = (
+    CHANNEL_FEISHU_CHAT_ID,
+    CHANNEL_WECOM_CHATID,
+    CHANNEL_QQ_USER,
+    CHANNEL_QQ_GROUP,
+    CHANNEL_QQ_CHANNEL,
+    CHANNEL_DINGTALK_USER,
+    CHANNEL_DINGTALK_GROUP,
+    CHANNEL_WECHAT_USER_ID,
 )

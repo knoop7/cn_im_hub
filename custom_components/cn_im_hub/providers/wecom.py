@@ -16,6 +16,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..command import execute_command, parse_command
 from ..const import CONF_WECOM_BOT_ID, CONF_WECOM_SECRET, PROVIDER_WECOM
+from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
 
@@ -169,6 +170,7 @@ async def async_setup_provider(
     bot_id = str(config.get(CONF_WECOM_BOT_ID, "")).strip()
     secret = str(config.get(CONF_WECOM_SECRET, "")).strip()
     client = WeComWsClient(hass, bot_id, secret)
+    tracker = await async_get_tracker(hass, subentry_id)
 
     async def _handle_inbound(frame: dict[str, Any]) -> None:
         cmd = frame.get("cmd")
@@ -190,6 +192,12 @@ async def async_setup_provider(
             return
 
         target = _extract_reply_target(body)
+        await tracker.async_record(
+            provider=PROVIDER_WECOM,
+            target=target,
+            target_type="chatid",
+            display_name=str(body.get("chat_name") or body.get("sender_name") or target),
+        )
         try:
             command = parse_command(text)
         except ValueError as err:
@@ -229,6 +237,9 @@ async def async_setup_provider(
         stop=client.stop,
         send_text=_send,
         status=lambda: client.status,
+        known_targets=tracker.snapshot,
+        selected_target=tracker.selected_target,
+        select_target=tracker.async_select_target,
     )
 
 

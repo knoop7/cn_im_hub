@@ -45,9 +45,7 @@
 ### 4) HA 服务
 
 - `cn_im_hub.send_message`
-  - 参数：`provider`、`target`、`target_type`、`message`
-- `cn_im_hub.test_conversation`
-  - 参数：`provider`、`text`
+  - 参数：`channel`、`target`、`message`、`use_selected_target`
 
 ## 平台后端设置
 
@@ -182,11 +180,8 @@
 
 ## 目标地址格式（send_message）
 
-- `feishu`：选择 `Feishu / chat_id`、`Feishu / open_id`、`Feishu / user_id`、`Feishu / union_id`
-- `wecom`：选择 `WeCom / chatid`
-- `qq`：选择 `QQ / user`、`QQ / group`、`QQ / channel`
-- `dingtalk`：选择 `DingTalk / user` 或 `DingTalk / group`
-- `target_type` 必须和 `provider` 对应；如果选错，服务会直接报错而不是静默发错
+- `channel` 直接选择发送通道与目标类型：`Feishu / chat_id`、`QQ / group`、`WeChat / user_id` 等
+- 如果不想手填 `target`，可以先在对应平台的 `target selector` 实体里选择一个已知 ID，再调用 `send_message` 时勾选 `use_selected_target`
 
 ## 对话方式
 

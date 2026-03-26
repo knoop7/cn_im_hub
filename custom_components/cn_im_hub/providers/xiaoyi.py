@@ -32,6 +32,7 @@ from ..const import (
     XIAOYI_DEFAULT_WS_URL_1,
     XIAOYI_DEFAULT_WS_URL_2,
 )
+from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
 
@@ -82,6 +83,7 @@ class XiaoYiClient:
         self._active_prompts: dict[str, asyncio.Task[str]] = {}
         self._session_servers: dict[str, str] = {}
         self._stopping = False
+        self._tracker = None
 
     @property
     def status(self) -> str:
@@ -141,8 +143,18 @@ class XiaoYiClient:
         self._app_heartbeat_task = None
         self._watchdog_task = None
 
-    async def send_text(self, _: str, __: str, ___: str) -> None:
-        raise RuntimeError("XiaoYi does not support direct send_message without an active session")
+    async def send_text(self, target: str, message: str, target_type: str) -> None:
+        if target_type != "session_id":
+            raise ValueError("XiaoYi send_message only supports target_type=session_id")
+        session_id = target.strip()
+        if not session_id:
+            raise ValueError("XiaoYi session_id is required")
+        server_id = self._session_servers.get(session_id)
+        if not server_id:
+            raise ValueError("XiaoYi session_id is unknown or no longer active")
+        task_id = str(uuid4())
+        await self._send_text_chunk(task_id, session_id, message)
+        await self._send_final(task_id, session_id)
 
     async def _connect_to_server(self, server_id: str) -> None:
         url = self._urls[server_id]
@@ -315,6 +327,13 @@ class XiaoYiClient:
         text = _extract_inbound_text(message)
         if not task_id or not session_id:
             return
+        if self._tracker is not None:
+            await self._tracker.async_record(
+                provider=PROVIDER_XIAOYI,
+                target=session_id,
+                target_type="session_id",
+                display_name=session_id,
+            )
         task = asyncio.create_task(self._process_prompt(task_id, session_id, text))
         self._active_prompts[task_id] = task
         task.add_done_callback(lambda _: self._active_prompts.pop(task_id, None))
@@ -542,6 +561,8 @@ async def async_setup_provider(
         ws_url_1=str(config.get(CONF_XIAOYI_WS_URL_1, XIAOYI_DEFAULT_WS_URL_1)).strip() or XIAOYI_DEFAULT_WS_URL_1,
         ws_url_2=str(config.get(CONF_XIAOYI_WS_URL_2, XIAOYI_DEFAULT_WS_URL_2)).strip() or XIAOYI_DEFAULT_WS_URL_2,
     )
+    tracker = await async_get_tracker(hass, subentry_id)
+    client._tracker = tracker
     await client.start()
 
     async def _send(target: str, message: str, target_type: str) -> None:
@@ -555,6 +576,9 @@ async def async_setup_provider(
         stop=client.stop,
         send_text=_send,
         status=lambda: client.status,
+        known_targets=tracker.snapshot,
+        selected_target=tracker.selected_target,
+        select_target=tracker.async_select_target,
     )
 
 

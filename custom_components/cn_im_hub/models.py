@@ -40,6 +40,9 @@ class ProviderRuntime:
     stop: Callable[[], Awaitable[None]]
     send_text: Callable[[str, str, str], Awaitable[None]]
     status: Callable[[], str]
+    known_targets: Callable[[], list[dict[str, str]]]
+    selected_target: Callable[[], str]
+    select_target: Callable[[str], Awaitable[None]]
 
 
 @dataclass(slots=True)

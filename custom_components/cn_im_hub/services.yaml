@@ -2,68 +2,38 @@ send_message:
   name: Send Message
   description: Send a message via selected IM provider.
   fields:
-    provider:
-      required: false
-      example: feishu
-      selector:
-        select:
-          options:
-            - feishu
-            - wecom
-            - qq
-            - dingtalk
-            - xiaoyi
-    target:
-      required: false
-      selector:
-        text:
-    target_type:
-      required: false
-      default: feishu:chat_id
+    channel:
+      required: true
+      example: feishu/chat_id
       selector:
         select:
           options:
             - label: Feishu / chat_id
-              value: feishu:chat_id
-            - label: Feishu / open_id
-              value: feishu:open_id
-            - label: Feishu / user_id
-              value: feishu:user_id
-            - label: Feishu / union_id
-              value: feishu:union_id
+              value: feishu/chat_id
             - label: WeCom / chatid
-              value: wecom:chatid
+              value: wecom/chatid
             - label: QQ / user
-              value: qq:user
+              value: qq/user
             - label: QQ / group
-              value: qq:group
+              value: qq/group
             - label: QQ / channel
-              value: qq:channel
+              value: qq/channel
             - label: DingTalk / user
-              value: dingtalk:user
+              value: dingtalk/user
             - label: DingTalk / group
-              value: dingtalk:group
-    message:
-      required: true
+              value: dingtalk/group
+            - label: WeChat / user_id
+              value: wechat/user_id
+    target:
+      required: false
       selector:
         text:
-
-test_conversation:
-  name: Test Conversation
-  description: Test Home Assistant conversation response.
-  fields:
-    provider:
+    use_selected_target:
       required: false
-      example: feishu
+      default: false
       selector:
-        select:
-          options:
-            - feishu
-            - wecom
-            - qq
-            - dingtalk
-            - xiaoyi
-    text:
+        boolean:
+    message:
       required: true
       selector:
         text:

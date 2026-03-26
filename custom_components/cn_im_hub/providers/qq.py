@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..command import execute_command, parse_command
 from ..const import CONF_QQ_APP_ID, CONF_QQ_CLIENT_SECRET, PROVIDER_QQ
+from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
 
@@ -211,6 +212,27 @@ async def async_setup_provider(
     app_id = str(config.get(CONF_QQ_APP_ID, "")).strip()
     client_secret = str(config.get(CONF_QQ_CLIENT_SECRET, "")).strip()
     client = QQClient(hass, app_id, client_secret, agent_id)
+    tracker = await async_get_tracker(hass, subentry_id)
+
+    original_handle_payload = client._handle_payload
+
+    async def _handle_payload_with_tracking(payload: dict[str, Any]) -> None:
+        if payload.get("op") == 0:
+            event_type = str(payload.get("t") or "")
+            data = payload.get("d") or {}
+            parsed = _parse_inbound(event_type, data)
+            if parsed:
+                _, target = parsed
+                kind, ident = _split_target(target)
+                await tracker.async_record(
+                    provider=PROVIDER_QQ,
+                    target=ident or target,
+                    target_type=kind,
+                    display_name=str((data.get("author") or {}).get("username") or ident or target),
+                )
+        await original_handle_payload(payload)
+
+    client._handle_payload = _handle_payload_with_tracking
     await client.start()
 
     async def _send(target: str, message: str, _: str) -> None:
@@ -224,6 +246,9 @@ async def async_setup_provider(
         stop=client.stop,
         send_text=_send,
         status=lambda: client.status,
+        known_targets=tracker.snapshot,
+        selected_target=tracker.selected_target,
+        select_target=tracker.async_select_target,
     )
 
 

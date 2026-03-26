@@ -48,11 +48,20 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Load release notes
+        id: notes
+        run: |
+          {
+            echo 'body<<EOF'
+            cat .github/release-notes.md
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub release
         if: steps.tag_check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           make_latest: true

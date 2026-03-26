@@ -16,6 +16,7 @@ from ..const import (
     CONF_DINGTALK_CLIENT_SECRET,
     PROVIDER_DINGTALK,
 )
+from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
 
@@ -178,6 +179,75 @@ async def async_setup_provider(
     client_id = str(config.get(CONF_DINGTALK_CLIENT_ID, "")).strip()
     client_secret = str(config.get(CONF_DINGTALK_CLIENT_SECRET, "")).strip()
     client = DingTalkClient(hass, client_id, client_secret, agent_id)
+    tracker = await async_get_tracker(hass, subentry_id)
+
+    original_run_stream = client._run_stream
+
+    async def _run_stream_with_tracking() -> None:
+        import dingtalk_stream
+
+        outer = client
+
+        class _TrackingHandler(dingtalk_stream.ChatbotHandler):
+            async def process(self, callback):
+                incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
+                sender_id = str(getattr(incoming, "sender_staff_id", None) or getattr(incoming, "sender_id", None) or "").strip()
+                conversation_id = str(getattr(incoming, "conversation_id", None) or getattr(incoming, "conversationId", None) or "").strip()
+                await tracker.async_record(
+                    provider=PROVIDER_DINGTALK,
+                    target=sender_id or conversation_id,
+                    target_type="user" if sender_id else "group",
+                    display_name=str(getattr(incoming, "sender_nick", None) or getattr(incoming, "senderNick", None) or sender_id or conversation_id),
+                )
+                return await original_handler.process(callback)
+
+        # fallback to original implementation if sdk unavailable
+        try:
+            credential = dingtalk_stream.Credential(outer._client_id, outer._client_secret)
+            original_handler = None
+            class _Handler(dingtalk_stream.ChatbotHandler):
+                async def process(self, callback):
+                    incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
+                    text = str(getattr(getattr(incoming, "text", None), "content", "") or "").strip()
+                    if not text:
+                        return dingtalk_stream.AckMessage.STATUS_OK, "OK"
+                    try:
+                        command = parse_command(text)
+                    except ValueError as err:
+                        self.reply_text(f"Invalid command: {err}", incoming)
+                        return dingtalk_stream.AckMessage.STATUS_OK, "OK"
+                    if command is None:
+                        return dingtalk_stream.AckMessage.STATUS_OK, "OK"
+                    fut = asyncio.run_coroutine_threadsafe(
+                        execute_command(
+                            outer._hass,
+                            command,
+                            conversation_id="dingtalk:stream",
+                            agent_id=outer._agent_id,
+                        ),
+                        outer._hass.loop,
+                    )
+                    try:
+                        reply = fut.result(timeout=30)
+                    except Exception as err:
+                        _LOGGER.warning("DingTalk command execution failed: %s", err)
+                        reply = f"Execution failed: {type(err).__name__}"
+                    self.reply_text(reply, incoming)
+                    return dingtalk_stream.AckMessage.STATUS_OK, "OK"
+            original_handler = _Handler()
+            tracking_handler = _TrackingHandler()
+            tracking_handler.reply_text = original_handler.reply_text  # type: ignore[attr-defined]
+            sdk_client = dingtalk_stream.DingTalkStreamClient(credential)
+            sdk_client.register_callback_handler(dingtalk_stream.chatbot.ChatbotMessage.TOPIC, tracking_handler)
+            outer._status = "connected"
+            await asyncio.to_thread(sdk_client.start_forever)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            _LOGGER.warning("DingTalk stream not started: %s", err)
+            outer._status = "error"
+
+    client._run_stream = _run_stream_with_tracking
     await client.start()
 
     async def _send(target: str, message: str, target_type: str) -> None:
@@ -192,6 +262,9 @@ async def async_setup_provider(
         stop=client.stop,
         send_text=_send,
         status=lambda: client.status,
+        known_targets=tracker.snapshot,
+        selected_target=tracker.selected_target,
+        select_target=tracker.async_select_target,
     )
 
 
