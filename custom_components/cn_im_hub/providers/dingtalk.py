@@ -193,12 +193,24 @@ async def async_setup_provider(
                 incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
                 sender_id = str(getattr(incoming, "sender_staff_id", None) or getattr(incoming, "sender_id", None) or "").strip()
                 conversation_id = str(getattr(incoming, "conversation_id", None) or getattr(incoming, "conversationId", None) or "").strip()
-                await tracker.async_record(
-                    provider=PROVIDER_DINGTALK,
-                    target=sender_id or conversation_id,
-                    target_type="user" if sender_id else "group",
-                    display_name=str(getattr(incoming, "sender_nick", None) or getattr(incoming, "senderNick", None) or sender_id or conversation_id),
+                fut = asyncio.run_coroutine_threadsafe(
+                    tracker.async_record(
+                        provider=PROVIDER_DINGTALK,
+                        target=sender_id or conversation_id,
+                        target_type="user" if sender_id else "group",
+                        display_name=str(
+                            getattr(incoming, "sender_nick", None)
+                            or getattr(incoming, "senderNick", None)
+                            or sender_id
+                            or conversation_id
+                        ),
+                    ),
+                    outer._hass.loop,
                 )
+                try:
+                    fut.result(timeout=10)
+                except Exception as err:
+                    _LOGGER.debug("DingTalk tracker record failed: %s", err)
                 return await original_handler.process(callback)
 
         # fallback to original implementation if sdk unavailable
