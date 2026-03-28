@@ -1,6 +1,6 @@
 {
   "name": "即时通信合集",
-  "content_in_root": false,
+  "content_in_root": true,
   "domains": [
     "cn_im_hub"
   ],

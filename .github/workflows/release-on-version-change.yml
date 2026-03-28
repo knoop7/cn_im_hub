@@ -88,15 +88,15 @@ jobs:
 
       - name: Create zip file
         run: |
-          cd ${{ github.workspace }}
-          zip -r cn_im_hub.zip custom_components/cn_im_hub -x "*.pyc" -x "*/__pycache__/*"
+          cd ${{ github.workspace }}/custom_components/cn_im_hub
+          zip -r cn_im_hub.zip ./
 
       - name: Upload release asset
         if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/cn_im_hub.zip
+          file: ${{ github.workspace }}/custom_components/cn_im_hub/cn_im_hub.zip
           asset_name: cn_im_hub.zip
           tag: ${{ steps.extract_version.outputs.version }}
           overwrite: true
@@ -106,7 +106,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/cn_im_hub.zip
+          file: ${{ github.workspace }}/custom_components/cn_im_hub/cn_im_hub.zip
           asset_name: cn_im_hub.zip
           tag: ${{ github.ref }}
           overwrite: true
