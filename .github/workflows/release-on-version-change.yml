@@ -2,16 +2,20 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - 'custom_components/cn_im_hub/manifest.json'
-  release:
-    types: [published]
+      - custom_components/cn_im_hub/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -20,91 +24,51 @@ jobs:
           fetch-depth: 0
 
       - name: Extract version from manifest
-        id: extract_version
-        if: github.event_name == 'push'
+        id: version
         run: |
-          version=$(jq -r '.version' custom_components/cn_im_hub/manifest.json)
-          echo "version=v$version" >> $GITHUB_OUTPUT
-          echo "version_number=${version#v}" >> $GITHUB_OUTPUT
+          VERSION=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('custom_components/cn_im_hub/manifest.json').read_text(encoding='utf-8'))
+          print(manifest['version'])
+          PY
+          )
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch tags
+        run: git fetch --tags --force
 
       - name: Check if tag exists
-        id: check_tag
-        if: github.event_name == 'push'
+        id: tag_check
         run: |
-          version="${{ steps.extract_version.outputs.version }}"
-          if git rev-parse "$version" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag $version already exists, skipping release"
+          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Tag $version does not exist, will create release"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Get previous tag
-        id: prev_tag
+      - name: Load release notes
+        id: notes
         run: |
-          git fetch --tags
-          prev_tag=$(git tag --sort=-creatordate | grep -v "^${{ steps.extract_version.outputs.version }}$" | head -n 1)
-          echo "prev_tag=$prev_tag" >> $GITHUB_OUTPUT
-
-      - name: Create changelog since previous release
-        id: changelog
-        run: |
-          prev_tag="${{ steps.prev_tag.outputs.prev_tag }}"
-          if [ -n "$prev_tag" ]; then
-            log=$(git log --pretty=format:"- %s" "$prev_tag"..HEAD)
-          else
-            log=$(git log --pretty=format:"- %s")
-          fi
-          
           {
-            echo "log<<EOF"
-            echo "$log"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+            echo 'body<<EOF'
+            cat .github/release-notes.md
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Create tag and release
-        if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
+      - name: Build HACS release archive
+        if: steps.tag_check.outputs.exists == 'false'
         run: |
-          version="${{ steps.extract_version.outputs.version }}"
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag -a "$version" -m "Release $version"
-          git push origin "$version"
+          cd custom_components/cn_im_hub
+          zip -r "$GITHUB_WORKSPACE/cn_im_hub.zip" ./ -x "*.pyc" -x "*/__pycache__/*"
 
-      - name: Create GitHub Release
-        if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
-        uses: softprops/action-gh-release@v1
+      - name: Create GitHub release with asset
+        if: steps.tag_check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.extract_version.outputs.version }}
-          name: Release ${{ steps.extract_version.outputs.version }}
-          body: |
-            ## Changes since ${{ steps.prev_tag.outputs.prev_tag }}
-            ${{ steps.changelog.outputs.log }}
-          draft: false
-          prerelease: false
-
-      - name: Create zip file
-        run: |
-          cd ${{ github.workspace }}
-          zip -r cn_im_hub.zip custom_components/cn_im_hub -x "*.pyc" -x "*/__pycache__/*"
-
-      - name: Upload release asset
-        if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/cn_im_hub.zip
-          asset_name: cn_im_hub.zip
-          tag: ${{ steps.extract_version.outputs.version }}
-          overwrite: true
-
-      - name: Upload release asset to existing release
-        if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/cn_im_hub.zip
-          asset_name: cn_im_hub.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body: ${{ steps.notes.outputs.body }}
+          files: cn_im_hub.zip
+          make_latest: true
