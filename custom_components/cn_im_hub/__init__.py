@@ -33,6 +33,7 @@ from .providers.registry import get_provider_specs
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR, Platform.SELECT]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 SERVICE_SEND_MESSAGE_SCHEMA = vol.Schema(
     {
