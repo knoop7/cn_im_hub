@@ -28,6 +28,11 @@ send_message:
       required: false
       selector:
         text:
+    wechat_account_id:
+      required: false
+      description: Required when using WeChat channel with multiple bound WeChat accounts.
+      selector:
+        text:
     use_selected_target:
       required: false
       default: false

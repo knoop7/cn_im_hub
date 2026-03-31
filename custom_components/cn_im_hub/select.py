@@ -19,9 +19,9 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     runtime: HubRuntime = entry.runtime_data
-    for key, provider_runtime in runtime.providers.items():
+    for runtime_key, provider_runtime in runtime.providers.items():
         async_add_entities(
-            [ProviderKnownTargetSelect(entry, key)],
+            [ProviderKnownTargetSelect(entry, runtime_key, provider_runtime.title)],
             True,
             config_subentry_id=provider_runtime.subentry_id,
         )
@@ -32,16 +32,17 @@ class ProviderKnownTargetSelect(SelectEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:account-search"
 
-    def __init__(self, entry: ConfigEntry, provider_key: str) -> None:
+    def __init__(self, entry: ConfigEntry, runtime_key: str, display_name: str) -> None:
         self._entry = entry
-        self._provider_key = provider_key
-        self._attr_unique_id = f"{entry.entry_id}_{provider_key}_known_target_select"
-        self._attr_name = f"{provider_key} target selector"
+        self._runtime_key = runtime_key
+        self._display_name = display_name
+        self._attr_unique_id = f"{entry.entry_id}_{runtime_key}_known_target_select"
+        self._attr_name = f"{display_name} target selector"
 
     @property
     def current_option(self) -> str | None:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return None
         value = provider.selected_target()
@@ -50,14 +51,14 @@ class ProviderKnownTargetSelect(SelectEntity):
     @property
     def options(self) -> list[str]:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return []
         return [item.get("target", "") for item in provider.known_targets() if item.get("target")]
 
     async def async_select_option(self, option: str) -> None:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return
         await provider.select_target(option)
@@ -66,8 +67,8 @@ class ProviderKnownTargetSelect(SelectEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id, self._provider_key)},
-            name=f"CN IM Hub {self._provider_key}",
+            identifiers={(DOMAIN, self._entry.entry_id, self._runtime_key)},
+            name=f"CN IM Hub {self._display_name}",
             manufacturer="HA China",
             model="IM Provider",
             entry_type="service",

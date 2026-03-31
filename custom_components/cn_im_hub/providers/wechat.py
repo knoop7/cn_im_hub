@@ -251,9 +251,10 @@ async def async_setup_provider(
     agent_id: str,
     subentry_id: str,
 ) -> ProviderRuntime:
+    account_id = str(config.get(CONF_WECHAT_ACCOUNT_ID, "")).strip()
     client = WeixinClient(
         hass,
-        account_id=str(config.get(CONF_WECHAT_ACCOUNT_ID, "")).strip(),
+        account_id=account_id,
         token=str(config.get(CONF_WECHAT_TOKEN, "")).strip(),
         base_url=str(config.get(CONF_WECHAT_BASE_URL, WECHAT_DEFAULT_BASE_URL)).strip() or WECHAT_DEFAULT_BASE_URL,
         user_id=str(config.get(CONF_WECHAT_USER_ID, "")).strip(),
@@ -269,7 +270,7 @@ async def async_setup_provider(
 
     return ProviderRuntime(
         key=PROVIDER_WECHAT,
-        title="WeChat",
+        title=f"WeChat ({account_id})" if account_id else "WeChat",
         subentry_id=subentry_id,
         client=client,
         stop=client.stop,

@@ -45,7 +45,7 @@
 ### 4) HA 服务
 
 - `cn_im_hub.send_message`
-  - 参数：`channel`、`target`、`message`、`use_selected_target`
+  - 参数：`channel`、`target`、`message`、`use_selected_target`、`wechat_account_id`（可选）
 
 ## 平台后端设置
 
@@ -185,6 +185,7 @@
 
 - `channel` 直接选择发送通道与目标类型：`Feishu / chat_id`、`QQ / group`、`WeChat / user_id` 等
 - 如果不想手填 `target`，可以先在对应平台的 `target selector` 实体里选择一个已知 ID，再调用 `send_message` 时勾选 `use_selected_target`
+- 多个个人微信账号并存时，通常无需手填 `wechat_account_id`：系统会优先按 `target`（已知目标归属）或当前唯一已选 `target selector` 自动路由；仅在仍然歧义时再填写 `wechat_account_id`
 
 ## 对话方式
 

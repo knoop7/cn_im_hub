@@ -19,11 +19,11 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     runtime: HubRuntime = entry.runtime_data
-    for key, provider_runtime in runtime.providers.items():
+    for runtime_key, provider_runtime in runtime.providers.items():
         async_add_entities(
             [
-                ProviderStatusSensor(entry, key),
-                ProviderKnownTargetsSensor(entry, key),
+                ProviderStatusSensor(entry, runtime_key, provider_runtime.title),
+                ProviderKnownTargetsSensor(entry, runtime_key, provider_runtime.title),
             ],
             True,
             config_subentry_id=provider_runtime.subentry_id,
@@ -37,16 +37,17 @@ class ProviderStatusSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:websocket"
 
-    def __init__(self, entry: ConfigEntry, provider_key: str) -> None:
+    def __init__(self, entry: ConfigEntry, runtime_key: str, display_name: str) -> None:
         self._entry = entry
-        self._provider_key = provider_key
-        self._attr_unique_id = f"{entry.entry_id}_{provider_key}_status"
-        self._attr_name = f"{provider_key} status"
+        self._runtime_key = runtime_key
+        self._display_name = display_name
+        self._attr_unique_id = f"{entry.entry_id}_{runtime_key}_status"
+        self._attr_name = f"{display_name} status"
 
     @property
     def native_value(self) -> str:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return "unavailable"
         return provider.status()
@@ -54,8 +55,8 @@ class ProviderStatusSensor(SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id, self._provider_key)},
-            name=f"CN IM Hub {self._provider_key}",
+            identifiers={(DOMAIN, self._entry.entry_id, self._runtime_key)},
+            name=f"CN IM Hub {self._display_name}",
             manufacturer="HA China",
             model="IM Provider",
             entry_type="service",
@@ -64,7 +65,7 @@ class ProviderStatusSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return {}
         return {"known_targets": provider.known_targets()}
@@ -77,16 +78,17 @@ class ProviderKnownTargetsSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:account-details"
 
-    def __init__(self, entry: ConfigEntry, provider_key: str) -> None:
+    def __init__(self, entry: ConfigEntry, runtime_key: str, display_name: str) -> None:
         self._entry = entry
-        self._provider_key = provider_key
-        self._attr_unique_id = f"{entry.entry_id}_{provider_key}_known_targets"
-        self._attr_name = f"{provider_key} known targets"
+        self._runtime_key = runtime_key
+        self._display_name = display_name
+        self._attr_unique_id = f"{entry.entry_id}_{runtime_key}_known_targets"
+        self._attr_name = f"{display_name} known targets"
 
     @property
     def native_value(self) -> int:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return "none"
         targets = provider.known_targets()
@@ -104,7 +106,7 @@ class ProviderKnownTargetsSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         runtime: HubRuntime = self._entry.runtime_data
-        provider = runtime.providers.get(self._provider_key)
+        provider = runtime.providers.get(self._runtime_key)
         if provider is None:
             return {"known_targets": []}
         return {"known_targets": provider.known_targets()}
@@ -112,8 +114,8 @@ class ProviderKnownTargetsSensor(SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id, self._provider_key)},
-            name=f"CN IM Hub {self._provider_key}",
+            identifiers={(DOMAIN, self._entry.entry_id, self._runtime_key)},
+            name=f"CN IM Hub {self._display_name}",
             manufacturer="HA China",
             model="IM Provider",
             entry_type="service",
