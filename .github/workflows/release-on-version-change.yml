@@ -48,12 +48,31 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Load release notes
+      - name: Generate release notes from commit history
         id: notes
         run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="$PREV_TAG..HEAD"
+            COMPARE_URL="https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ steps.version.outputs.tag }}"
+          else
+            RANGE="HEAD"
+            COMPARE_URL="https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}"
+          fi
+
+          COMMITS=$(git log --no-merges --pretty='- %h %s' $RANGE)
+          if [ -z "$COMMITS" ]; then
+            COMMITS='- No commits found in this release range.'
+          fi
+
           {
             echo 'body<<EOF'
-            cat .github/release-notes.md
+            echo "## Changes"
+            echo
+            echo "$COMMITS"
+            echo
+            echo "## Compare"
+            echo "$COMPARE_URL"
             echo EOF
           } >> "$GITHUB_OUTPUT"
 

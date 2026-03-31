@@ -6,11 +6,10 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import SubentryFlowResult
+from homeassistant.config_entries import ConfigSubentryFlow, SubentryFlowResult
 from homeassistant.helpers.storage import Store
 
 from ..const import CONF_WECHAT_ACCOUNT_ID, CONF_WECHAT_BASE_URL, CONF_WECHAT_TOKEN, CONF_WECHAT_USER_ID, WECHAT_DEFAULT_BASE_URL
-from ..provider_flow import BaseProviderSubentryFlow
 from .wechat_auth import async_start_weixin_login, async_wait_weixin_login
 
 _LOGGER = logging.getLogger(__name__)
@@ -18,28 +17,18 @@ _ACCOUNT_INDEX_STORE_VERSION = 1
 _ACCOUNT_INDEX_STORE_KEY = "cn_im_hub_wechat_accounts"
 
 
-class WeixinProviderSubentryFlow(BaseProviderSubentryFlow):
+class WeixinProviderSubentryFlow(ConfigSubentryFlow):
     """QR login based setup flow for Weixin channel."""
+
+    _provider_spec: Any
+    _current: dict[str, Any]
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        existing = [
-            subentry
-            for subentry in self._get_entry().subentries.values()
-            if subentry.subentry_type == self._provider_spec.key
-        ]
-        if existing:
-            return self.async_abort(reason="already_configured")
         self._current = {CONF_WECHAT_BASE_URL: WECHAT_DEFAULT_BASE_URL}
         await self._async_prepare_qr()
         return await self.async_step_auth_wait(None)
-
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        self._current = dict(self._get_reconfigure_subentry().data)
-        return self.async_abort(reason="reconfigure_not_supported")
 
     async def async_step_auth_wait(
         self, user_input: dict[str, Any] | None = None
@@ -78,7 +67,19 @@ class WeixinProviderSubentryFlow(BaseProviderSubentryFlow):
             CONF_WECHAT_BASE_URL: result.base_url or str(self._current.get(CONF_WECHAT_BASE_URL, WECHAT_DEFAULT_BASE_URL)),
         }
         await self._async_update_account_index(data)
-        return await self._async_complete(data)
+        return self.async_create_entry(
+            title=self._build_entry_title(data),
+            data=data,
+        )
+
+    @staticmethod
+    def _build_entry_title(data: dict[str, str]) -> str:
+        account_id = str(data.get(CONF_WECHAT_ACCOUNT_ID, "")).strip()
+        user_id = str(data.get(CONF_WECHAT_USER_ID, "")).strip()
+        suffix = account_id or user_id
+        if suffix:
+            return f"WeChat ({suffix})"
+        return "WeChat"
 
     async def _async_prepare_qr(self) -> None:
         result = await async_start_weixin_login(

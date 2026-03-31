@@ -91,8 +91,7 @@
     "wechat": {
       "entry_type": "个人微信",
       "initiate_flow": {
-        "user": "添加个人微信",
-        "reconfigure": "个人微信设置"
+        "user": "添加个人微信"
       },
       "step": {
         "auth_wait": {
