@@ -30,14 +30,10 @@ send_message:
         text:
     wechat_account_id:
       required: false
-      description: Required when using WeChat channel with multiple bound WeChat accounts.
+      description: Required when using WeChat channel with multiple bound WeChat accounts. Use the WeChat subentry title suffix or the full title.
+      example: "WeChat (abc123@im.bot)"
       selector:
         text:
-    use_selected_target:
-      required: false
-      default: true
-      selector:
-        boolean:
     message:
       required: false
       selector:

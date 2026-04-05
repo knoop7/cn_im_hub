@@ -45,7 +45,6 @@ SERVICE_SEND_MESSAGE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_TARGET, default=""): cv.string,
         vol.Optional(ATTR_WECHAT_ACCOUNT_ID, default=""): cv.string,
         vol.Optional(ATTR_CAMERA_ENTITY, default=""): vol.Any(None, "", cv.entity_id),
-        vol.Optional("use_selected_target", default=True): cv.boolean,
     }
 )
 
@@ -145,7 +144,6 @@ def _select_wechat_runtime(
     *,
     wechat_account_id: str,
     explicit_target: str,
-    use_selected_target: bool,
 )-> ProviderRuntime | None:
     candidates = list(runtimes)
     if wechat_account_id:
@@ -161,10 +159,9 @@ def _select_wechat_runtime(
         if len(matched) == 1:
             return matched[0]
 
-    if use_selected_target:
-        selected = [item for item in candidates if item.selected_target().strip()]
-        if len(selected) == 1:
-            return selected[0]
+    selected = [item for item in candidates if item.selected_target().strip()]
+    if len(selected) == 1:
+        return selected[0]
 
     return candidates[0] if len(candidates) == 1 else None
 
@@ -194,7 +191,6 @@ def _register_services(hass: HomeAssistant) -> None:
         message = str(call.data.get(ATTR_MESSAGE, "")).strip()
         camera_entity = str(call.data.get(ATTR_CAMERA_ENTITY, "")).strip()
         wechat_account_id = str(call.data.get(ATTR_WECHAT_ACCOUNT_ID, "")).strip()
-        use_selected_target = bool(call.data.get("use_selected_target", False))
         if not message and not camera_entity:
             return
         requested, normalized_target_type = _parse_channel(channel)
@@ -210,22 +206,21 @@ def _register_services(hass: HomeAssistant) -> None:
                 providers,
                 wechat_account_id=wechat_account_id,
                 explicit_target=resolved_target,
-                use_selected_target=use_selected_target,
             )
             if provider is None:
                 raise ValueError(
                     "WeChat account is ambiguous. Set wechat_account_id, or provide a target already seen by one account, "
-                    "or set use_selected_target with only one WeChat selector currently chosen."
+                    "or ensure only one WeChat target selector currently has a selected target."
                 )
         else:
             if len(providers) != 1:
                 raise ValueError(f"Provider '{requested}' is ambiguous across multiple entries.")
             provider = providers[0]
 
-        if use_selected_target and not resolved_target:
+        if not resolved_target:
             resolved_target = provider.selected_target()
         if not resolved_target:
-            raise ValueError("target is required, or enable use_selected_target after selecting a known target entity")
+            raise ValueError("target is required, or select a known target in the provider target selector entity")
         if camera_entity:
             if provider.send_image is None:
                 raise ValueError(f"Provider '{requested}' does not support camera image sending")

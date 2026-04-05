@@ -23,6 +23,22 @@
       "agent_id_required": "必须填写 agent_id"
     }
   },
+  "services": {
+    "send_message": {
+      "name": "发送消息",
+      "description": "通过选定的即时通信服务发送消息。",
+      "fields": {
+        "wechat_account_id": {
+          "name": "微信账号",
+          "description": "在绑定了多个个人微信时需要填写。可填写 WeChat 子服务标题里的后缀，或完整标题，例如：WeChat (abc123@im.bot)。"
+        },
+        "camera_entity": {
+          "name": "摄像头实体",
+          "description": "抓取该摄像头当前快照并作为图片发送。当前支持 WeChat、WeCom、Feishu 和 QQ。"
+        }
+      }
+    }
+  },
   "config_subentries": {
     "feishu": {
       "entry_type": "飞书服务",
