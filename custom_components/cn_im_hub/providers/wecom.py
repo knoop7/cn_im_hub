@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import hashlib
 import json
 import logging
 import uuid
@@ -30,7 +32,11 @@ CMD_RESPOND_MSG = "aibot_respond_msg"
 CMD_RESPOND_WELCOME = "aibot_respond_welcome_msg"
 CMD_MSG_CALLBACK = "aibot_msg_callback"
 CMD_EVENT_CALLBACK = "aibot_event_callback"
+CMD_UPLOAD_MEDIA_INIT = "aibot_upload_media_init"
+CMD_UPLOAD_MEDIA_CHUNK = "aibot_upload_media_chunk"
+CMD_UPLOAD_MEDIA_FINISH = "aibot_upload_media_finish"
 EVENT_ENTER_CHAT = "enter_chat"
+_UPLOAD_CHUNK_SIZE = 512 * 1024
 
 
 class WeComWsClient:
@@ -44,6 +50,7 @@ class WeComWsClient:
         self._running = False
         self._authenticated = False
         self._callback: Any = None
+        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
 
     @property
     def status(self) -> str:
@@ -64,6 +71,10 @@ class WeComWsClient:
 
     async def stop(self) -> None:
         self._running = False
+        for future in self._pending.values():
+            if not future.done():
+                future.cancel()
+        self._pending.clear()
         if self._runner_task:
             self._runner_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -109,6 +120,84 @@ class WeComWsClient:
         async with self._session.post(response_url, json=payload, timeout=15) as resp:
             _ = await resp.text()
 
+    async def send_image(self, target: str, image_bytes: bytes) -> None:
+        if not self._ws or self._ws.closed:
+            raise RuntimeError("websocket not connected")
+        if not image_bytes:
+            raise ValueError("wecom image data is empty")
+        media_id = await self._upload_media(image_bytes, media_type="image", filename="camera.jpg")
+        payload = {
+            "cmd": CMD_SEND_MSG,
+            "headers": {"req_id": f"{CMD_SEND_MSG}_{uuid.uuid4().hex[:16]}"},
+            "body": {"chatid": target, "msgtype": "image", "image": {"media_id": media_id}},
+        }
+        await self._send_with_reply(payload)
+
+    async def _send_with_reply(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self._ws or self._ws.closed:
+            raise RuntimeError("websocket not connected")
+        req_id = str(payload.get("headers", {}).get("req_id") or "").strip()
+        if not req_id:
+            raise ValueError("req_id is required")
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._pending[req_id] = future
+        try:
+            await self._ws.send_json(payload)
+            frame = await asyncio.wait_for(future, timeout=15)
+        finally:
+            self._pending.pop(req_id, None)
+        if isinstance(frame.get("errcode"), int) and frame["errcode"] != 0:
+            raise RuntimeError(f"wecom {payload.get('cmd')} failed: {frame.get('errcode')} {frame.get('errmsg')}")
+        return frame
+
+    async def _upload_media(self, file_bytes: bytes, *, media_type: str, filename: str) -> str:
+        total_size = len(file_bytes)
+        total_chunks = max(1, (total_size + _UPLOAD_CHUNK_SIZE - 1) // _UPLOAD_CHUNK_SIZE)
+        init_frame = await self._send_with_reply(
+            {
+                "cmd": CMD_UPLOAD_MEDIA_INIT,
+                "headers": {"req_id": f"{CMD_UPLOAD_MEDIA_INIT}_{uuid.uuid4().hex[:16]}"},
+                "body": {
+                    "type": media_type,
+                    "filename": filename,
+                    "total_size": total_size,
+                    "total_chunks": total_chunks,
+                    "md5": hashlib.md5(file_bytes).hexdigest(),
+                },
+            }
+        )
+        upload_id = str((init_frame.get("body") or {}).get("upload_id") or "")
+        if not upload_id:
+            raise ValueError("wecom upload init missing upload_id")
+
+        for chunk_index in range(total_chunks):
+            start = chunk_index * _UPLOAD_CHUNK_SIZE
+            end = min(start + _UPLOAD_CHUNK_SIZE, total_size)
+            chunk = file_bytes[start:end]
+            await self._send_with_reply(
+                {
+                    "cmd": CMD_UPLOAD_MEDIA_CHUNK,
+                    "headers": {"req_id": f"{CMD_UPLOAD_MEDIA_CHUNK}_{uuid.uuid4().hex[:16]}"},
+                    "body": {
+                        "upload_id": upload_id,
+                        "chunk_index": chunk_index,
+                        "base64_data": base64.b64encode(chunk).decode("ascii"),
+                    },
+                }
+            )
+
+        finish_frame = await self._send_with_reply(
+            {
+                "cmd": CMD_UPLOAD_MEDIA_FINISH,
+                "headers": {"req_id": f"{CMD_UPLOAD_MEDIA_FINISH}_{uuid.uuid4().hex[:16]}"},
+                "body": {"upload_id": upload_id},
+            }
+        )
+        media_id = str((finish_frame.get("body") or {}).get("media_id") or "")
+        if not media_id:
+            raise ValueError("wecom upload finish missing media_id")
+        return media_id
+
     async def _run(self) -> None:
         while self._running:
             try:
@@ -125,6 +214,12 @@ class WeComWsClient:
                     msg = await self._ws.receive()
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         frame = json.loads(msg.data)
+                        req_id = str(frame.get("headers", {}).get("req_id") or "").strip()
+                        if req_id and req_id in self._pending:
+                            future = self._pending[req_id]
+                            if not future.done():
+                                future.set_result(frame)
+                            continue
                         if self._callback:
                             await self._callback(frame)
                     elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
@@ -229,6 +324,9 @@ async def async_setup_provider(
     async def _send(target: str, message: str, _: str) -> None:
         await client.send_markdown(target or "@all", message)
 
+    async def _send_image(target: str, image_bytes: bytes, _: str) -> None:
+        await client.send_image(target or "@all", image_bytes)
+
     return ProviderRuntime(
         key=PROVIDER_WECOM,
         title="WeCom",
@@ -240,6 +338,7 @@ async def async_setup_provider(
         known_targets=tracker.snapshot,
         selected_target=tracker.selected_target,
         select_target=tracker.async_select_target,
+        send_image=_send_image,
     )
 
 

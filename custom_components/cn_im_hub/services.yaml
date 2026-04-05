@@ -35,10 +35,17 @@ send_message:
         text:
     use_selected_target:
       required: false
-      default: false
+      default: true
       selector:
         boolean:
     message:
-      required: true
+      required: false
       selector:
         text:
+    camera_entity:
+      required: false
+      description: Camera entity to capture and send as an image. Currently supported by WeChat and WeCom.
+      selector:
+        entity:
+          filter:
+            domain: camera

@@ -23,7 +23,13 @@ from ..const import (
 from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
 from .base import ProviderSpec
-from .wechat_auth import SESSION_EXPIRED_ERRCODE, async_get_updates, async_send_weixin_text, extract_text_body
+from .wechat_auth import (
+    SESSION_EXPIRED_ERRCODE,
+    async_get_updates,
+    async_send_weixin_image,
+    async_send_weixin_text,
+    extract_text_body,
+)
 from .wechat_flow import WeixinProviderSubentryFlow
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +105,20 @@ class WeixinClient:
             to_user_id=target,
             context_token=context_token,
             text=text,
+        )
+
+    async def send_image(self, target: str, image_bytes: bytes, _: str) -> None:
+        target = target.strip()
+        if not target:
+            raise ValueError("Weixin target user_id is required")
+        context_token = self._context_tokens.get(target, "")
+        await async_send_weixin_image(
+            self._hass,
+            base_url=self._base_url,
+            token=self._token,
+            to_user_id=target,
+            context_token=context_token,
+            image_bytes=image_bytes,
         )
 
     async def _run(self) -> None:
@@ -268,6 +288,9 @@ async def async_setup_provider(
     async def _send(target: str, message: str, target_type: str) -> None:
         await client.send_text(target, message, target_type)
 
+    async def _send_image(target: str, image_bytes: bytes, target_type: str) -> None:
+        await client.send_image(target, image_bytes, target_type)
+
     return ProviderRuntime(
         key=PROVIDER_WECHAT,
         title=f"WeChat ({account_id})" if account_id else "WeChat",
@@ -279,6 +302,7 @@ async def async_setup_provider(
         known_targets=tracker.snapshot,
         selected_target=tracker.selected_target,
         select_target=tracker.async_select_target,
+        send_image=_send_image,
     )
 
 

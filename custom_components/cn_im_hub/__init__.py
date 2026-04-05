@@ -12,6 +12,7 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    ATTR_CAMERA_ENTITY,
     ATTR_CHANNEL,
     ATTR_MESSAGE,
     ATTR_TARGET,
@@ -40,10 +41,11 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SERVICE_SEND_MESSAGE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CHANNEL, default=CHANNEL_FEISHU_CHAT_ID): vol.In(CHANNEL_OPTIONS),
-        vol.Required(ATTR_MESSAGE): cv.string,
+        vol.Optional(ATTR_MESSAGE, default=""): cv.string,
         vol.Optional(ATTR_TARGET, default=""): cv.string,
         vol.Optional(ATTR_WECHAT_ACCOUNT_ID, default=""): cv.string,
-        vol.Optional("use_selected_target", default=False): cv.boolean,
+        vol.Optional(ATTR_CAMERA_ENTITY, default=""): vol.Any(None, "", cv.entity_id),
+        vol.Optional("use_selected_target", default=True): cv.boolean,
     }
 )
 
@@ -116,6 +118,20 @@ def _runtime_wechat_account_id(provider_runtime: ProviderRuntime) -> str:
     return str(getattr(provider_runtime.client, "_account_id", "")).strip()
 
 
+def _matches_wechat_account(provider_runtime: ProviderRuntime, requested: str) -> bool:
+    requested_value = requested.strip()
+    if not requested_value:
+        return False
+    account_id = _runtime_wechat_account_id(provider_runtime)
+    if requested_value == account_id:
+        return True
+    title = str(getattr(provider_runtime, "title", "")).strip()
+    if requested_value == title:
+        return True
+    wrapped = f"WeChat ({account_id})" if account_id else ""
+    return bool(wrapped and requested_value == wrapped)
+
+
 def _all_provider_runtimes(hass: HomeAssistant, provider_key: str) -> list[ProviderRuntime]:
     providers: list[ProviderRuntime] = []
     for entry in hass.config_entries.async_entries(DOMAIN):
@@ -133,7 +149,7 @@ def _select_wechat_runtime(
 )-> ProviderRuntime | None:
     candidates = list(runtimes)
     if wechat_account_id:
-        candidates = [item for item in candidates if _runtime_wechat_account_id(item) == wechat_account_id]
+        candidates = [item for item in candidates if _matches_wechat_account(item, wechat_account_id)]
         return candidates[0] if len(candidates) == 1 else None
 
     if explicit_target:
@@ -175,10 +191,11 @@ def _register_services(hass: HomeAssistant) -> None:
     async def _handle_send_message(call: ServiceCall) -> None:
         channel = str(call.data.get(ATTR_CHANNEL, CHANNEL_FEISHU_CHAT_ID))
         target = call.data.get(ATTR_TARGET, "")
-        message = call.data.get(ATTR_MESSAGE, "")
+        message = str(call.data.get(ATTR_MESSAGE, "")).strip()
+        camera_entity = str(call.data.get(ATTR_CAMERA_ENTITY, "")).strip()
         wechat_account_id = str(call.data.get(ATTR_WECHAT_ACCOUNT_ID, "")).strip()
         use_selected_target = bool(call.data.get("use_selected_target", False))
-        if not message:
+        if not message and not camera_entity:
             return
         requested, normalized_target_type = _parse_channel(channel)
         resolved_target = str(target or "").strip()
@@ -209,6 +226,17 @@ def _register_services(hass: HomeAssistant) -> None:
             resolved_target = provider.selected_target()
         if not resolved_target:
             raise ValueError("target is required, or enable use_selected_target after selecting a known target entity")
+        if camera_entity:
+            if provider.send_image is None:
+                raise ValueError(f"Provider '{requested}' does not support camera image sending")
+            from homeassistant.components.camera import async_get_image
+
+            image = await async_get_image(hass, camera_entity)
+            await provider.send_image(resolved_target, image.content, normalized_target_type)
+            if message:
+                await provider.send_text(resolved_target, message, normalized_target_type)
+            return
+
         await provider.send_text(resolved_target, message, normalized_target_type)
 
     if not hass.services.has_service(DOMAIN, SERVICE_SEND_MESSAGE):

@@ -102,6 +102,63 @@ class FeishuApiClient:
 
         await self._hass.async_add_executor_job(_send)
 
+    async def async_send_image_message(
+        self,
+        *,
+        receive_id: str,
+        image_bytes: bytes,
+        receive_id_type: str = DEFAULT_FEISHU_TARGET_TYPE,
+    ) -> None:
+        if not image_bytes:
+            raise ValueError("Feishu image data is empty")
+        token = await self.async_get_tenant_access_token()
+        form = aiohttp.FormData()
+        form.add_field("image_type", "message")
+        form.add_field("image", image_bytes, filename="camera.jpg", content_type="image/jpeg")
+        async with asyncio.timeout(30):
+            response = await self._session.post(
+                "https://open.feishu.cn/open-apis/im/v1/images",
+                headers={"Authorization": f"Bearer {token}"},
+                data=form,
+            )
+        data = await _async_read_json(response)
+        if response.status != 200 or data.get("code") != 0:
+            raise RuntimeError(f"upload image failed: {data.get('msg', response.reason)}")
+        image_key = str((data.get("data") or {}).get("image_key") or "")
+        if not image_key:
+            raise RuntimeError("upload image succeeded but image_key missing")
+
+        content = json.dumps({"image_key": image_key}, ensure_ascii=False)
+
+        def _send() -> None:
+            lark, _ = _import_lark()
+            client = (
+                lark.Client.builder()
+                .app_id(self._app_id)
+                .app_secret(self._app_secret)
+                .log_level(lark.LogLevel.INFO)
+                .build()
+            )
+            request = (
+                lark.im.v1.CreateMessageRequest.builder()
+                .receive_id_type(receive_id_type)
+                .request_body(
+                    lark.im.v1.CreateMessageRequestBody.builder()
+                    .receive_id(receive_id)
+                    .msg_type("image")
+                    .content(content)
+                    .build()
+                )
+                .build()
+            )
+            response = client.im.v1.message.create(request)
+            if not response.success():
+                raise RuntimeError(
+                    f"send image failed code={response.code}, msg={response.msg}, log_id={response.get_log_id()}"
+                )
+
+        await self._hass.async_add_executor_job(_send)
+
     async def async_send_safe_reply(self, *, receive_id: str, text: str, receive_id_type: str) -> None:
         try:
             await self.async_send_text_message(
@@ -388,6 +445,13 @@ async def async_setup_provider(
             receive_id_type=target_type or DEFAULT_FEISHU_TARGET_TYPE,
         )
 
+    async def _send_image(target: str, image_bytes: bytes, target_type: str) -> None:
+        await api_client.async_send_image_message(
+            receive_id=target,
+            image_bytes=image_bytes,
+            receive_id_type=target_type or DEFAULT_FEISHU_TARGET_TYPE,
+        )
+
     return ProviderRuntime(
         key=PROVIDER_FEISHU,
         title="Feishu",
@@ -399,6 +463,7 @@ async def async_setup_provider(
         known_targets=tracker.snapshot,
         selected_target=tracker.selected_target,
         select_target=tracker.async_select_target,
+        send_image=_send_image,
     )
 
 

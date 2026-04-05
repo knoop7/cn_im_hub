@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 import logging
@@ -80,6 +81,57 @@ class QQClient:
         ) as resp:
             if resp.status >= 400:
                 raise RuntimeError(f"QQ send failed: {resp.status} {await resp.text()}")
+
+    async def send_image(self, target: str, image_bytes: bytes, target_type: str) -> None:
+        token = await self._get_token()
+        if not image_bytes:
+            raise ValueError("QQ image data is empty")
+        kind = target_type.strip().lower() if target_type else _split_target(target)[0]
+        ident = target.strip()
+        if ":" in ident:
+            kind, ident = _split_target(ident)
+        file_info = await self._upload_image(token, ident, kind, image_bytes)
+        if kind == "user":
+            path = f"/v2/users/{ident}/messages"
+        elif kind == "group":
+            path = f"/v2/groups/{ident}/messages"
+        else:
+            raise ValueError("QQ image sending only supports user and group targets")
+        body = {"msg_type": 7, "media": {"file_info": file_info}}
+        async with self._session.post(
+            f"{_API_BASE}{path}",
+            headers={"Authorization": f"QQBot {token}"},
+            json=body,
+            timeout=30,
+        ) as resp:
+            if resp.status >= 400:
+                raise RuntimeError(f"QQ image send failed: {resp.status} {await resp.text()}")
+
+    async def _upload_image(self, token: str, ident: str, kind: str, image_bytes: bytes) -> str:
+        if kind == "user":
+            path = f"/v2/users/{ident}/files"
+        elif kind == "group":
+            path = f"/v2/groups/{ident}/files"
+        else:
+            raise ValueError("QQ image upload only supports user and group targets")
+        body = {
+            "file_type": 1,
+            "srv_send_msg": False,
+            "file_data": base64.b64encode(image_bytes).decode("ascii"),
+        }
+        async with self._session.post(
+            f"{_API_BASE}{path}",
+            headers={"Authorization": f"QQBot {token}"},
+            json=body,
+            timeout=30,
+        ) as resp:
+            data = await resp.json(content_type=None)
+            if resp.status >= 400:
+                raise RuntimeError(f"QQ image upload failed: {resp.status} {data}")
+        file_info = str(data.get("file_info") or "")
+        if not file_info:
+            raise RuntimeError(f"QQ image upload missing file_info: {data}")
+        return file_info
 
     async def _run(self) -> None:
         while True:
@@ -179,6 +231,15 @@ def _split_target(target: str) -> tuple[str, str]:
     return kind.strip().lower(), ident.strip()
 
 
+def _normalize_outbound_target(target: str, target_type: str) -> str:
+    target = target.strip()
+    if ":" in target:
+        return target
+    if target_type in ("user", "group", "channel"):
+        return f"{target_type}:{target}"
+    return target
+
+
 def _parse_inbound(event_type: str, data: dict[str, Any]) -> tuple[str, str] | None:
     text = str(data.get("content") or "").strip()
     if not text:
@@ -235,8 +296,11 @@ async def async_setup_provider(
     client._handle_payload = _handle_payload_with_tracking
     await client.start()
 
-    async def _send(target: str, message: str, _: str) -> None:
-        await client.send_text(target, message)
+    async def _send(target: str, message: str, target_type: str) -> None:
+        await client.send_text(_normalize_outbound_target(target, target_type), message)
+
+    async def _send_image(target: str, image_bytes: bytes, target_type: str) -> None:
+        await client.send_image(_normalize_outbound_target(target, target_type), image_bytes, target_type)
 
     return ProviderRuntime(
         key=PROVIDER_QQ,
@@ -249,6 +313,7 @@ async def async_setup_provider(
         known_targets=tracker.snapshot,
         selected_target=tracker.selected_target,
         select_target=tracker.async_select_target,
+        send_image=_send_image,
     )
 
 

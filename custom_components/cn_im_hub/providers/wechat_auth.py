@@ -6,12 +6,15 @@ import asyncio
 import base64
 import hashlib
 import json
+from urllib.parse import quote
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
 from uuid import uuid4
 
 import aiohttp
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import segno
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -23,6 +26,7 @@ _DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000
 _DEFAULT_API_TIMEOUT_MS = 15_000
 _DEFAULT_ILINK_BOT_TYPE = "3"
 SESSION_EXPIRED_ERRCODE = -14
+_WECHAT_CDN_BASE_URL = "https://c2cwxappimg.weixin.qq.com"
 
 
 @dataclass(slots=True)
@@ -196,6 +200,105 @@ async def async_send_weixin_text(
                 "message_type": 2,
                 "message_state": 2,
                 "item_list": [{"type": 1, "text_item": {"text": text}}],
+                "context_token": context_token,
+            },
+            "base_info": {"channel_version": "ha-cn-im-hub"},
+        },
+        token=token,
+    )
+    return client_id
+
+
+def _encrypt_aes_ecb(plaintext: bytes, key: bytes) -> bytes:
+    padder = padding.PKCS7(128).padder()
+    padded = padder.update(plaintext) + padder.finalize()
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+    encryptor = cipher.encryptor()
+    return encryptor.update(padded) + encryptor.finalize()
+
+
+async def async_send_weixin_image(
+    hass: HomeAssistant,
+    *,
+    base_url: str,
+    token: str,
+    to_user_id: str,
+    context_token: str,
+    image_bytes: bytes,
+) -> str:
+    if not image_bytes:
+        raise ValueError("Weixin image data is empty")
+
+    session = async_get_clientsession(hass)
+    client_id = f"cn_im_hub_{uuid4().hex}"
+    filekey = uuid4().hex
+    aes_key = uuid4().bytes
+    ciphertext = _encrypt_aes_ecb(image_bytes, aes_key)
+    aes_key_hex = aes_key.hex()
+    upload_data = await _api_post(
+        session,
+        base_url=base_url,
+        endpoint="ilink/bot/getuploadurl",
+        payload={
+            "filekey": filekey,
+            "media_type": 1,
+            "to_user_id": to_user_id,
+            "rawsize": len(image_bytes),
+            "rawfilemd5": hashlib.md5(image_bytes).hexdigest(),
+            "filesize": len(ciphertext),
+            "no_need_thumb": True,
+            "aeskey": aes_key_hex,
+            "base_info": {"channel_version": "ha-cn-im-hub"},
+        },
+        token=token,
+    )
+    upload_param = str(upload_data.get("upload_param") or "")
+    if not upload_param:
+        raise ValueError(f"Weixin getuploadurl returned empty upload_param: {upload_data}")
+
+    upload_url = (
+        f"{_WECHAT_CDN_BASE_URL}/upload"
+        f"?encrypted_query_param={quote(upload_param, safe='')}"
+        f"&filekey={quote(filekey, safe='')}"
+    )
+    async with session.post(
+        upload_url,
+        data=ciphertext,
+        headers={"Content-Type": "application/octet-stream"},
+        timeout=aiohttp.ClientTimeout(total=60),
+    ) as resp:
+        if resp.status >= 400:
+            raw = await resp.text()
+            raise RuntimeError(f"wechat cdn upload {resp.status}: {raw}")
+        encrypt_query_param = str(resp.headers.get("x-encrypted-param") or "")
+    if not encrypt_query_param:
+        raise ValueError("Weixin CDN upload missing x-encrypted-param")
+
+    await _api_post(
+        session,
+        base_url=base_url,
+        endpoint="ilink/bot/sendmessage",
+        payload={
+            "msg": {
+                "from_user_id": "",
+                "to_user_id": to_user_id,
+                "client_id": client_id,
+                "message_type": 2,
+                "message_state": 2,
+                "item_list": [
+                    {
+                        "type": 2,
+                        "image_item": {
+                            "media": {
+                                "encrypt_query_param": encrypt_query_param,
+                                "aes_key": base64.b64encode(aes_key_hex.encode("utf-8")).decode("ascii"),
+                                "encrypt_type": 1,
+                            }
+                            ,
+                            "mid_size": len(ciphertext),
+                        },
+                    }
+                ],
                 "context_token": context_token,
             },
             "base_info": {"channel_version": "ha-cn-im-hub"},

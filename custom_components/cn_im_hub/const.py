@@ -56,6 +56,7 @@ ATTR_TEXT: Final = "text"
 ATTR_TARGET_TYPE: Final = "target_type"
 ATTR_CHANNEL: Final = "channel"
 ATTR_WECHAT_ACCOUNT_ID: Final = "wechat_account_id"
+ATTR_CAMERA_ENTITY: Final = "camera_entity"
 
 DEFAULT_FEISHU_TARGET_TYPE: Final = "chat_id"
 
