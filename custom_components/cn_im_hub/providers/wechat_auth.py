@@ -253,14 +253,17 @@ async def async_send_weixin_image(
         token=token,
     )
     upload_param = str(upload_data.get("upload_param") or "")
-    if not upload_param:
-        raise ValueError(f"Weixin getuploadurl returned empty upload_param: {upload_data}")
-
-    upload_url = (
-        f"{_WECHAT_CDN_BASE_URL}/upload"
-        f"?encrypted_query_param={quote(upload_param, safe='')}"
-        f"&filekey={quote(filekey, safe='')}"
-    )
+    upload_full_url = str(upload_data.get("upload_full_url") or "")
+    if upload_full_url:
+        upload_url = upload_full_url
+    elif upload_param:
+        upload_url = (
+            f"{_WECHAT_CDN_BASE_URL}/upload"
+            f"?encrypted_query_param={quote(upload_param, safe='')}"
+            f"&filekey={quote(filekey, safe='')}"
+        )
+    else:
+        raise ValueError(f"Weixin getuploadurl returned no usable upload url: {upload_data}")
     async with session.post(
         upload_url,
         data=ciphertext,

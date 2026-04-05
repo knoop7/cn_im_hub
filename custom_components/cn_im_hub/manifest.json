@@ -25,5 +25,5 @@
     "dingtalk-stream>=0.24.3",
     "segno>=1.6.6"
   ],
-  "version": "2026.04.0"
+  "version": "2026.04.1"
 }
