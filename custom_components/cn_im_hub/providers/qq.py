@@ -240,19 +240,52 @@ def _normalize_outbound_target(target: str, target_type: str) -> str:
     return target
 
 
+def _extract_voice_fallback_text(data: dict[str, Any]) -> str:
+    attachments = data.get("attachments") or []
+    if not isinstance(attachments, list):
+        return ""
+
+    voice_parts: list[str] = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        content_type = str(attachment.get("content_type") or "").strip().lower()
+        if not (
+            content_type == "voice"
+            or content_type.startswith("audio/")
+            or "silk" in content_type
+            or "amr" in content_type
+        ):
+            continue
+        asr_text = str(attachment.get("asr_refer_text") or "").strip()
+        if asr_text:
+            voice_parts.append(asr_text)
+
+    if not voice_parts:
+        return ""
+    if len(voice_parts) == 1:
+        return f"[语音消息(ASR兜底，可能不准确)] {voice_parts[0]}"
+    return "\n".join(
+        f"[语音{i + 1}(ASR兜底，可能不准确)] {text}"
+        for i, text in enumerate(voice_parts)
+    )
+
+
 def _parse_inbound(event_type: str, data: dict[str, Any]) -> tuple[str, str] | None:
     text = str(data.get("content") or "").strip()
-    if not text:
+    voice_text = _extract_voice_fallback_text(data)
+    user_text = f"{text}\n{voice_text}".strip() if text and voice_text else text or voice_text
+    if not user_text:
         return None
     if event_type == "C2C_MESSAGE_CREATE":
         user = str((data.get("author") or {}).get("user_openid") or "")
-        return (text, f"user:{user}") if user else None
+        return (user_text, f"user:{user}") if user else None
     if event_type == "GROUP_AT_MESSAGE_CREATE":
         group = str(data.get("group_openid") or "")
-        return (text, f"group:{group}") if group else None
+        return (user_text, f"group:{group}") if group else None
     if event_type in ("AT_MESSAGE_CREATE", "DIRECT_MESSAGE_CREATE"):
         channel = str(data.get("channel_id") or "")
-        return (text, f"channel:{channel}") if channel else None
+        return (user_text, f"channel:{channel}") if channel else None
     return None
 
 
