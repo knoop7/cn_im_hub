@@ -240,6 +240,9 @@ class WeComWsClient:
 def _extract_text(body: dict[str, Any]) -> str:
     if body.get("msgtype") == "text":
         return body.get("text", {}).get("content", "").strip()
+    if body.get("msgtype") == "voice":
+        content = str((body.get("voice") or {}).get("content") or "").strip()
+        return content
     return str(body.get("content", "")).strip()
 
 

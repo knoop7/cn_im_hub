@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -23,6 +24,27 @@ from .base import ProviderSpec
 _LOGGER = logging.getLogger(__name__)
 _OAUTH_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
 _API_BASE = "https://api.dingtalk.com"
+_OAPI_BASE = "https://oapi.dingtalk.com"
+
+
+def _extract_stream_text(data: dict[str, Any]) -> str:
+    msgtype = str(data.get("msgtype") or "text").strip().lower()
+    if msgtype == "text":
+        return str(((data.get("text") or {}).get("content") or "")).strip()
+    if msgtype == "audio":
+        content = data.get("content") if isinstance(data.get("content"), dict) else {}
+        recognition = str(content.get("recognition") or (data.get("audio") or {}).get("recognition") or "").strip()
+        return recognition
+    return ""
+
+
+def _extract_stream_sender_and_target(data: dict[str, Any]) -> tuple[str, str, str]:
+    sender_id = str(data.get("senderStaffId") or data.get("sender_staff_id") or data.get("senderId") or data.get("sender_id") or "").strip()
+    conversation_id = str(data.get("conversationId") or data.get("conversation_id") or "").strip()
+    display_name = str(data.get("senderNick") or data.get("sender_nick") or sender_id or conversation_id).strip()
+    if sender_id:
+        return sender_id, "user", display_name
+    return conversation_id or "group", "group", display_name
 
 
 class DingTalkClient:
@@ -36,6 +58,8 @@ class DingTalkClient:
         self._task: asyncio.Task[None] | None = None
         self._token = ""
         self._token_expire = 0.0
+        self._oapi_token = ""
+        self._oapi_token_expire = 0.0
 
     @property
     def status(self) -> str:
@@ -87,6 +111,39 @@ class DingTalkClient:
             if resp.status >= 400:
                 raise RuntimeError(f"DingTalk send failed: {resp.status} {await resp.text()}")
 
+    async def send_image(self, target: str, image_bytes: bytes, target_type: str) -> None:
+        token = await self._get_token()
+        photo_url = await self._upload_image(image_bytes)
+        target = target.strip()
+        if not target:
+            raise ValueError("DingTalk target is required")
+
+        if target_type == "user":
+            path = "/v1.0/robot/oToMessages/batchSend"
+            body = {
+                "robotCode": self._client_id,
+                "userIds": [target],
+                "msgKey": "sampleImageMsg",
+                "msgParam": json.dumps({"photoURL": photo_url}, ensure_ascii=False),
+            }
+        else:
+            path = "/v1.0/robot/groupMessages/send"
+            body = {
+                "robotCode": self._client_id,
+                "openConversationId": target,
+                "msgKey": "sampleImageMsg",
+                "msgParam": json.dumps({"photoURL": photo_url}, ensure_ascii=False),
+            }
+
+        async with self._session.post(
+            f"{_API_BASE}{path}",
+            headers={"x-acs-dingtalk-access-token": token},
+            json=body,
+            timeout=30,
+        ) as resp:
+            if resp.status >= 400:
+                raise RuntimeError(f"DingTalk image send failed: {resp.status} {await resp.text()}")
+
     async def _run_stream(self) -> None:
         """Use official Stream SDK if available, without webhook mode."""
         self._status = "connecting"
@@ -97,8 +154,9 @@ class DingTalkClient:
 
             class _Handler(dingtalk_stream.ChatbotHandler):
                 async def process(self, callback):
+                    raw_data = callback.data if isinstance(callback.data, dict) else {}
                     incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
-                    text = str(getattr(getattr(incoming, "text", None), "content", "") or "").strip()
+                    text = _extract_stream_text(raw_data)
                     if not text:
                         return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
@@ -161,6 +219,48 @@ class DingTalkClient:
         self._token_expire = now + int(data.get("expireIn") or 7200)
         return token
 
+    async def _get_oapi_token(self) -> str:
+        now = asyncio.get_running_loop().time()
+        if self._oapi_token and now < self._oapi_token_expire - 300:
+            return self._oapi_token
+
+        async with self._session.get(
+            f"{_OAPI_BASE}/gettoken",
+            params={"appkey": self._client_id, "appsecret": self._client_secret},
+            timeout=15,
+        ) as resp:
+            data = await resp.json(content_type=None)
+            if resp.status >= 400 or int(data.get("errcode") or 0) != 0:
+                raise RuntimeError(f"DingTalk OAPI token fetch failed: {resp.status} {data}")
+
+        token = str(data.get("access_token") or "")
+        if not token:
+            raise RuntimeError(f"DingTalk OAPI access_token missing: {data}")
+        self._oapi_token = token
+        self._oapi_token_expire = now + int(data.get("expires_in") or 7200)
+        return token
+
+    async def _upload_image(self, image_bytes: bytes) -> str:
+        if not image_bytes:
+            raise ValueError("DingTalk image data is empty")
+        token = await self._get_oapi_token()
+        form = aiohttp.FormData()
+        form.add_field("media", image_bytes, filename="camera.jpg", content_type="image/jpeg")
+        async with self._session.post(
+            f"{_OAPI_BASE}/media/upload",
+            params={"access_token": token, "type": "image"},
+            data=form,
+            timeout=60,
+        ) as resp:
+            data = await resp.json(content_type=None)
+            if resp.status >= 400 or int(data.get("errcode") or 0) != 0:
+                raise RuntimeError(f"DingTalk image upload failed: {resp.status} {data}")
+        media_id = str(data.get("media_id") or "")
+        if not media_id:
+            raise RuntimeError(f"DingTalk image upload missing media_id: {data}")
+        clean_media_id = media_id[1:] if media_id.startswith("@") else media_id
+        return f"https://down.dingtalk.com/media/{clean_media_id}"
+
 
 async def async_validate_config(_: HomeAssistant, config: dict[str, Any]) -> None:
     client_id = str(config.get(CONF_DINGTALK_CLIENT_ID, "")).strip()
@@ -190,20 +290,15 @@ async def async_setup_provider(
 
         class _TrackingHandler(dingtalk_stream.ChatbotHandler):
             async def process(self, callback):
+                raw_data = callback.data if isinstance(callback.data, dict) else {}
                 incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
-                sender_id = str(getattr(incoming, "sender_staff_id", None) or getattr(incoming, "sender_id", None) or "").strip()
-                conversation_id = str(getattr(incoming, "conversation_id", None) or getattr(incoming, "conversationId", None) or "").strip()
+                target, target_type, display_name = _extract_stream_sender_and_target(raw_data)
                 fut = asyncio.run_coroutine_threadsafe(
                     tracker.async_record(
                         provider=PROVIDER_DINGTALK,
-                        target=sender_id or conversation_id,
-                        target_type="user" if sender_id else "group",
-                        display_name=str(
-                            getattr(incoming, "sender_nick", None)
-                            or getattr(incoming, "senderNick", None)
-                            or sender_id
-                            or conversation_id
-                        ),
+                        target=target,
+                        target_type=target_type,
+                        display_name=display_name,
                     ),
                     outer._hass.loop,
                 )
@@ -219,8 +314,9 @@ async def async_setup_provider(
             original_handler = None
             class _Handler(dingtalk_stream.ChatbotHandler):
                 async def process(self, callback):
+                    raw_data = callback.data if isinstance(callback.data, dict) else {}
                     incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
-                    text = str(getattr(getattr(incoming, "text", None), "content", "") or "").strip()
+                    text = _extract_stream_text(raw_data)
                     if not text:
                         return dingtalk_stream.AckMessage.STATUS_OK, "OK"
                     try:
@@ -266,6 +362,10 @@ async def async_setup_provider(
         mode = target_type if target_type in ("group", "user") else "group"
         await client.send_text(target, message, mode)
 
+    async def _send_image(target: str, image_bytes: bytes, target_type: str) -> None:
+        mode = target_type if target_type in ("group", "user") else "group"
+        await client.send_image(target, image_bytes, mode)
+
     return ProviderRuntime(
         key=PROVIDER_DINGTALK,
         title="DingTalk",
@@ -277,6 +377,7 @@ async def async_setup_provider(
         known_targets=tracker.snapshot,
         selected_target=tracker.selected_target,
         select_target=tracker.async_select_target,
+        send_image=_send_image,
     )
 
 
