@@ -40,7 +40,7 @@ send_message:
         text:
     camera_entity:
       required: false
-      description: Camera entity to capture and send as an image. Currently supported by WeChat and WeCom.
+      description: Camera entity to capture and send as an image. Currently supported by WeChat, WeCom, Feishu, QQ, and DingTalk.
       selector:
         entity:
           filter:
