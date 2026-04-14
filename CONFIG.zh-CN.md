@@ -98,3 +98,20 @@
 - HA 端已配置全局 `agent_id`。
 - 平台子服务已在集成页面添加成功。
 - HA 主机网络可以访问平台接口。
+
+## 参考链接
+
+- Hello Claw 第三章（QQ 机器人流程）：
+  `https://datawhalechina.github.io/hello-claw/cn/adopt/chapter3/`
+- ha-feishu（飞书后台配置与截图）：
+  `https://github.com/ha-china/ha-feishu`
+- ha_wecom（企微后台配置与截图）：
+  `https://github.com/ha-china/ha_wecom`
+- 钉钉官方文档（OpenClaw 接入）：
+  `https://open.dingtalk.com/document/dingstart/build-dingtalk-ai-employees`
+- 华为官方文档（OpenClaw 基础配置）：
+  `https://developer.huawei.com/consumer/cn/doc/service/open-claw-base-0000002518704040`
+- 华为官方文档（快速创建智能体）：
+  `https://developer.huawei.com/consumer/cn/doc/service/quick-start-0000002469548009`
+- 华为官方文档（OpenClaw 接入）：
+  `https://developer.huawei.com/consumer/cn/doc/service/openclaw-0000002518410344`
