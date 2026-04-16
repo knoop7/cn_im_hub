@@ -148,8 +148,18 @@ def _select_wechat_runtime(
     candidates = list(runtimes)
     if wechat_account_id:
         candidates = [item for item in candidates if _matches_wechat_account(item, wechat_account_id)]
-        return candidates[0] if len(candidates) == 1 else None
+        if len(candidates) == 1:
+            return candidates[0]
 
+    return _select_provider_runtime(candidates, explicit_target=explicit_target)
+
+
+def _select_provider_runtime(
+    runtimes: list[ProviderRuntime],
+    *,
+    explicit_target: str,
+) -> ProviderRuntime | None:
+    candidates = list(runtimes)
     if explicit_target:
         matched = [
             item
@@ -158,6 +168,8 @@ def _select_wechat_runtime(
         ]
         if len(matched) == 1:
             return matched[0]
+        if matched:
+            candidates = matched
 
     selected = [item for item in candidates if item.selected_target().strip()]
     if len(selected) == 1:
@@ -213,9 +225,12 @@ def _register_services(hass: HomeAssistant) -> None:
                     "or ensure only one WeChat target selector currently has a selected target."
                 )
         else:
-            if len(providers) != 1:
-                raise ValueError(f"Provider '{requested}' is ambiguous across multiple entries.")
-            provider = providers[0]
+            provider = _select_provider_runtime(providers, explicit_target=resolved_target)
+            if provider is None:
+                raise ValueError(
+                    f"Provider '{requested}' is ambiguous. Provide a target already seen by one account, "
+                    "or ensure only one target selector currently has a selected target."
+                )
 
         if not resolved_target:
             resolved_target = provider.selected_target()

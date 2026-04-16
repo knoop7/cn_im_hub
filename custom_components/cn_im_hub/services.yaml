@@ -26,6 +26,7 @@ send_message:
               value: wechat/user_id
     target:
       required: false
+      description: Optional. If omitted, the service will use the currently selected target from the matching provider selector. When multiple same-type provider instances exist, a filled target also helps route to the correct instance.
       selector:
         text:
     wechat_account_id:

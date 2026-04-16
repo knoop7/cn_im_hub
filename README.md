@@ -65,8 +65,8 @@ Aggregate common Chinese IM platforms into one Home Assistant integration.
 
 - `channel` 选择发送通道与目标类型，例如：`feishu/chat_id`、`qq/group`、`wechat/user_id`。  
   `channel` selects the provider and target type, for example `feishu/chat_id`, `qq/group`, `wechat/user_id`.
-- 如果不想手填 `target`，可以先在对应平台的 `target selector` 实体里选择一个已知 ID，发送时会自动优先使用当前已选目标。  
-  If you do not want to type `target`, pick it in the provider `target selector` entity first and the service will use the selected target automatically.
+- 如果存在多个同类平台实例，`send_message` 会先按 `target` 命中历史目标自动路由；如果没填 `target`，则自动使用当前唯一已选的 `target selector`。  
+  If multiple instances of the same provider exist, `send_message` first routes by a known `target`; if `target` is empty, it falls back to the only currently selected `target selector`.
 - 多个个人微信账号并存时，通常无需手填 `wechat_account_id`；仅在路由仍然歧义时才需要填写。  
   With multiple personal WeChat accounts, `wechat_account_id` is usually not required unless routing is still ambiguous.
 - `camera_entity` 会抓取当前快照并作为图片发送。  
