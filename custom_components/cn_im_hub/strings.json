@@ -28,13 +28,17 @@
       "name": "Send Message",
       "description": "Send a message via the selected IM provider.",
       "fields": {
+        "target": {
+          "name": "Target",
+          "description": "Optional. If omitted, the service will use the currently selected target from the matching provider selector. When multiple same-type provider instances exist, a filled target also helps route to the correct instance."
+        },
         "wechat_account_id": {
           "name": "WeChat Account",
           "description": "Required when using WeChat with multiple bound accounts. Use the WeChat subentry title suffix or the full title, for example: WeChat (abc123@im.bot)."
         },
         "camera_entity": {
           "name": "Camera Entity",
-          "description": "Capture a snapshot from this camera and send it as an image. Currently supported by WeChat, WeCom, Feishu, and QQ."
+          "description": "Capture a snapshot from this camera and send it as an image. Currently supported by WeChat, WeCom, Feishu, QQ, and DingTalk."
         }
       }
     }
