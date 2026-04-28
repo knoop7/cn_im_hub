@@ -9,10 +9,14 @@ import hashlib
 import json
 import logging
 import uuid
+from io import BytesIO
 from typing import Any
+from urllib.parse import urlencode
 
 import aiohttp
+import segno
 import voluptuous as vol
+from homeassistant.config_entries import ConfigSubentryFlow, SubentryFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -20,6 +24,7 @@ from ..command import execute_command, parse_command
 from ..const import CONF_WECOM_BOT_ID, CONF_WECOM_SECRET, PROVIDER_WECOM
 from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
+from ..provider_flow import BaseProviderSubentryFlow
 from .base import ProviderSpec
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +42,9 @@ CMD_UPLOAD_MEDIA_CHUNK = "aibot_upload_media_chunk"
 CMD_UPLOAD_MEDIA_FINISH = "aibot_upload_media_finish"
 EVENT_ENTER_CHAT = "enter_chat"
 _UPLOAD_CHUNK_SIZE = 512 * 1024
+_QR_GENERATE_URL = "https://work.weixin.qq.com/ai/qc/generate"
+_QR_QUERY_URL = "https://work.weixin.qq.com/ai/qc/query_result"
+_QR_CODE_PAGE = "https://work.weixin.qq.com/ai/qc/gen?source=wecom-cli&scode="
 
 
 class WeComWsClient:
@@ -258,6 +266,45 @@ async def async_validate_config(_: HomeAssistant, config: dict[str, Any]) -> Non
         raise ValueError("bot_id and secret are required")
 
 
+async def _async_fetch_wecom_qr(hass: HomeAssistant) -> tuple[str, str]:
+    session = async_get_clientsession(hass)
+    params = {"source": "wecom-cli", "plat": 3}
+    async with session.get(_QR_GENERATE_URL, params=params, timeout=15) as resp:
+        data = await resp.json(content_type=None)
+        if resp.status >= 400:
+            raise RuntimeError(f"WeCom QR generate failed: {resp.status} {data}")
+    payload = data.get("data") or {}
+    scode = str(payload.get("scode") or "").strip()
+    auth_url = str(payload.get("auth_url") or "").strip()
+    if not scode or not auth_url:
+        raise ValueError(f"WeCom QR generate missing fields: {data}")
+    return scode, auth_url
+
+
+async def _async_query_wecom_qr_result(hass: HomeAssistant, scode: str) -> dict[str, str] | None:
+    session = async_get_clientsession(hass)
+    url = f"{_QR_QUERY_URL}?{urlencode({'scode': scode})}"
+    async with session.get(url, timeout=15) as resp:
+        data = await resp.json(content_type=None)
+        if resp.status >= 400:
+            raise RuntimeError(f"WeCom QR query failed: {resp.status} {data}")
+    payload = data.get("data") or {}
+    if payload.get("status") != "success":
+        return None
+    bot_info = payload.get("bot_info") or {}
+    bot_id = str(bot_info.get("botid") or "").strip()
+    secret = str(bot_info.get("secret") or "").strip()
+    if not bot_id or not secret:
+        raise ValueError(f"WeCom QR success missing bot credentials: {data}")
+    return {CONF_WECOM_BOT_ID: bot_id, CONF_WECOM_SECRET: secret}
+
+
+def _build_qr_data_url(text: str) -> str:
+    out = BytesIO()
+    segno.make(text).save(out, kind="png", scale=6, border=2)
+    return "data:image/png;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+
+
 async def async_setup_provider(
     hass: HomeAssistant,
     config: dict[str, Any],
@@ -354,10 +401,117 @@ def _build_schema(current: dict[str, Any]) -> vol.Schema:
     )
 
 
+class WeComProviderSubentryFlow(BaseProviderSubentryFlow):
+    _provider_spec: ProviderSpec
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        self._current = {}
+        return await self.async_step_setup_method(user_input)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        self._current = dict(self._get_reconfigure_subentry().data)
+        return await self.async_step_manual(user_input)
+
+    async def async_step_setup_method(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        return self.async_show_menu(
+            step_id="setup_method",
+            menu_options=["qr_prepare", "manual"],
+        )
+
+    async def async_step_qr_prepare(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        try:
+            scode, auth_url = await _async_fetch_wecom_qr(self.hass)
+        except Exception:  # noqa: BLE001
+            return self.async_abort(reason="cannot_connect")
+        self._current["wecom_scode"] = scode
+        self._current["wecom_auth_url"] = auth_url
+        self._current["wecom_qr_data_url"] = _build_qr_data_url(auth_url)
+        return await self.async_step_qr_wait(None)
+
+    async def async_step_qr_wait(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            scode = str(self._current.get("wecom_scode") or "").strip()
+            if not scode:
+                return await self.async_step_qr_prepare(None)
+            try:
+                data = await _async_query_wecom_qr_result(self.hass, scode)
+            except Exception:  # noqa: BLE001
+                errors["base"] = "cannot_connect"
+            else:
+                if data is None:
+                    errors["base"] = "auth_not_confirmed"
+                else:
+                    return await self._async_complete(data)
+
+        scode = str(self._current.get("wecom_scode") or "")
+        auth_url = str(self._current.get("wecom_auth_url") or "")
+        description_placeholders = {
+            "qr_url": auth_url,
+            "qr_markdown": f"![WeCom QR]({self._current.get('wecom_qr_data_url', '')})"
+            if self._current.get("wecom_qr_data_url")
+            else (f"![WeCom QR]({_QR_CODE_PAGE}{scode})" if scode else ""),
+        }
+        return self.async_show_form(
+            step_id="qr_wait",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders=description_placeholders,
+        )
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            data = {key: str(value).strip() for key, value in user_input.items()}
+            try:
+                await self._provider_spec.validate_config(self.hass, data)
+            except Exception:  # noqa: BLE001
+                errors["base"] = "cannot_connect"
+            else:
+                return await self._async_complete(data)
+            self._current.update(data)
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=self._provider_spec.schema_builder(self._current),
+            errors=errors,
+        )
+
+    async def _async_complete(self, data: dict[str, str]) -> SubentryFlowResult:
+        title = self._build_entry_title(data)
+        if self._is_new:
+            return self.async_create_entry(title=title, data=data)
+        return self.async_update_and_abort(
+            self._get_entry(),
+            self._get_reconfigure_subentry(),
+            data=data,
+        )
+
+    @staticmethod
+    def _build_entry_title(data: dict[str, str]) -> str:
+        bot_id = str(data.get(CONF_WECOM_BOT_ID, "")).strip()
+        if bot_id:
+            return f"WeCom ({bot_id})"
+        return "WeCom"
+
+
 PROVIDER_SPEC = ProviderSpec(
     key=PROVIDER_WECOM,
     title="WeCom",
     schema_builder=_build_schema,
     validate_config=async_validate_config,
     setup_provider=async_setup_provider,
+    flow_handler=WeComProviderSubentryFlow,
 )

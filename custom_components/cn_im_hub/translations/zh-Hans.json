@@ -67,8 +67,20 @@
         "reconfigure": "企微设置"
       },
       "step": {
-        "set_options": {
+        "setup_method": {
           "title": "添加企微",
+          "description": "选择添加方式。新用户可通过扫码引导完成添加，老用户可直接手动填写 Bot ID 和 Secret。",
+          "menu_options": {
+            "qr_prepare": "扫码添加",
+            "manual": "手动填写"
+          }
+        },
+        "qr_wait": {
+          "title": "等待企微扫码确认",
+          "description": "请使用企业微信扫码并完成授权，确认后点击提交。如果二维码图片未正常显示，可直接打开二维码链接。\n\n{qr_markdown}\n\n二维码链接：{qr_url}"
+        },
+        "manual": {
+          "title": "手动添加企微",
           "data": {
             "bot_id": "Bot ID",
             "secret": "Secret"

@@ -67,8 +67,20 @@
         "reconfigure": "WeCom Settings"
       },
       "step": {
-        "set_options": {
+        "setup_method": {
           "title": "Add WeCom",
+          "description": "Choose how to add WeCom. Use QR-based onboarding for new users, or enter Bot ID and Secret directly for existing users.",
+          "menu_options": {
+            "qr_prepare": "Scan QR Code",
+            "manual": "Manual Entry"
+          }
+        },
+        "qr_wait": {
+          "title": "Waiting for WeCom Scan",
+          "description": "Scan the QR code with WeCom and complete authorization. After confirmation, click Submit. If the QR image does not render, open the QR URL manually.\n\n{qr_markdown}\n\nQR URL: {qr_url}"
+        },
+        "manual": {
+          "title": "Add WeCom (Manual)",
           "data": {
             "bot_id": "Bot ID",
             "secret": "Secret"
