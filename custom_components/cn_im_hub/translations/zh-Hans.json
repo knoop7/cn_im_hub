@@ -28,17 +28,53 @@
       "name": "发送消息",
       "description": "通过选定的即时通信服务发送消息。",
       "fields": {
-        "target": {
-          "name": "目标",
-          "description": "可选。不填写时，服务会自动使用匹配平台当前已选中的 target selector 目标。当存在多个同类平台实例时，填写 target 也有助于自动路由到正确实例。"
-        },
         "wechat_account_id": {
           "name": "微信账号",
           "description": "在绑定了多个个人微信时需要填写。可填写 WeChat 子服务标题里的后缀，或完整标题，例如：WeChat (abc123@im.bot)。"
         },
         "camera_entity": {
           "name": "摄像头实体",
-          "description": "抓取该摄像头当前快照并作为图片发送。当前支持 WeChat、WeCom、Feishu、QQ 和 DingTalk。"
+          "description": "抓取该摄像头当前快照并作为图片发送。当前支持 WeChat、WeCom、Feishu 和 QQ。"
+        },
+        "tts_text": {
+          "name": "语音文本",
+          "description": "当服务提供方支持时，把这段文本合成为语音发送。"
+        },
+        "file_path": {
+          "name": "文件路径",
+          "description": "要作为媒体发送的本地绝对路径。"
+        },
+        "file_url": {
+          "name": "文件 URL",
+          "description": "下载后作为媒体发送的远程 URL。"
+        },
+        "file_name": {
+          "name": "文件名",
+          "description": "文件媒体的可选发送文件名覆盖值。"
+        },
+        "media_type": {
+          "name": "媒体类型",
+          "description": "用于 file_path 或 file_url 的可选媒体类型覆盖。"
+        },
+        "message_format": {
+          "name": "消息格式",
+          "description": "可选的出站文本格式覆盖。当前 QQ 支持 auto、text 和 markdown。"
+        },
+        "approval_id": {
+          "name": "审批 ID",
+          "description": "设置后，将消息作为 QQ 审批提示发送，并附带允许/拒绝按钮。"
+        },
+        "record_duration": {
+          "name": "录制时长",
+          "description": "当 camera_entity 用于视频或 GIF 采集时，计划录制或采集的秒数。未填写时，GIF 默认 3 秒。"
+        },
+        "lookback": {
+          "name": "回看时长",
+          "description": "视频录制开始前额外包含的回看秒数。仅用于视频采集。"
+        },
+        "gif_fps": {
+          "name": "GIF 帧率",
+          "description": "从摄像头快照生成动图时的每秒帧数。"
         }
       }
     }
@@ -67,20 +103,8 @@
         "reconfigure": "企微设置"
       },
       "step": {
-        "setup_method": {
+        "set_options": {
           "title": "添加企微",
-          "description": "选择添加方式。新用户可通过扫码引导完成添加，老用户可直接手动填写 Bot ID 和 Secret。",
-          "menu_options": {
-            "qr_prepare": "扫码添加",
-            "manual": "手动填写"
-          }
-        },
-        "qr_wait": {
-          "title": "等待企微扫码确认",
-          "description": "请使用企业微信扫码并完成授权，确认后点击提交。如果二维码图片未正常显示，可直接打开二维码链接。\n\n{qr_markdown}\n\n二维码链接：{qr_url}"
-        },
-        "manual": {
-          "title": "手动添加企微",
           "data": {
             "bot_id": "Bot ID",
             "secret": "Secret"
@@ -99,7 +123,8 @@
           "title": "添加QQ",
           "data": {
             "qq_app_id": "App ID",
-            "qq_client_secret": "App Secret"
+            "qq_client_secret": "App Secret",
+            "qq_show_live_progress": "显示思考与工具进度"
           }
         }
       }

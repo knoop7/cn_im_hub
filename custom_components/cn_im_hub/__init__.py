@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -12,10 +13,20 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    ATTR_APPROVAL_ID,
     ATTR_CAMERA_ENTITY,
     ATTR_CHANNEL,
+    ATTR_FILE_NAME,
+    ATTR_FILE_PATH,
+    ATTR_FILE_URL,
+    ATTR_GIF_FPS,
+    ATTR_LOOKBACK,
     ATTR_MESSAGE,
+    ATTR_MESSAGE_FORMAT,
+    ATTR_MEDIA_TYPE,
+    ATTR_RECORD_DURATION,
     ATTR_TARGET,
+    ATTR_TTS_TEXT,
     ATTR_WECHAT_ACCOUNT_ID,
     CHANNEL_DINGTALK_GROUP,
     CHANNEL_DINGTALK_USER,
@@ -27,9 +38,16 @@ from .const import (
     CHANNEL_WECHAT_USER_ID,
     CHANNEL_WECOM_CHATID,
     CONF_AGENT_ID,
+    DEFAULT_GIF_DURATION,
+    DEFAULT_VIDEO_RECORD_DURATION,
     DOMAIN,
     PROVIDER_WECHAT,
     SERVICE_SEND_MESSAGE,
+)
+from .camera_media import (
+    async_capture_camera_gif,
+    async_record_camera_clip,
+    async_resolve_camera_entity,
 )
 from .models import HubRuntime, ProviderRuntime
 from .providers.registry import get_provider_specs
@@ -45,11 +63,72 @@ SERVICE_SEND_MESSAGE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_TARGET, default=""): cv.string,
         vol.Optional(ATTR_WECHAT_ACCOUNT_ID, default=""): cv.string,
         vol.Optional(ATTR_CAMERA_ENTITY, default=""): vol.Any(None, "", cv.entity_id),
+        vol.Optional(ATTR_FILE_PATH, default=""): cv.string,
+        vol.Optional(ATTR_FILE_URL, default=""): cv.string,
+        vol.Optional(ATTR_FILE_NAME, default=""): cv.string,
+        vol.Optional(ATTR_MEDIA_TYPE, default=""): vol.Any("", vol.In(["image", "gif", "voice", "video", "file"])),
+        vol.Optional(ATTR_TTS_TEXT, default=""): cv.string,
+        vol.Optional(ATTR_MESSAGE_FORMAT, default=""): vol.Any("", vol.In(["auto", "text", "markdown"])),
+        vol.Optional(ATTR_APPROVAL_ID, default=""): cv.string,
+        vol.Optional(ATTR_RECORD_DURATION): vol.Coerce(int),
+        vol.Optional(ATTR_LOOKBACK, default=0): vol.Coerce(int),
+        vol.Optional(ATTR_GIF_FPS, default=2): vol.Coerce(int),
     }
 )
 
+
+def _infer_media_type(file_path: str, file_url: str, explicit_media_type: str) -> str:
+    if explicit_media_type:
+        return explicit_media_type
+    candidate = file_path or file_url
+    suffix = Path(candidate.split("?", 1)[0]).suffix.lower() if candidate else ""
+    if suffix in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}:
+        return "image"
+    if suffix in {".mp3", ".wav", ".silk", ".ogg", ".amr", ".m4a"}:
+        return "voice"
+    if suffix in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}:
+        return "video"
+    return "file"
+
+
+async def _read_media_source(hass: HomeAssistant, file_path: str, file_url: str) -> tuple[bytes, str]:
+    if file_path:
+        path = Path(file_path)
+        if not path.is_file():
+            raise ValueError(f"file_path not found: {file_path}")
+        data = await hass.async_add_executor_job(path.read_bytes)
+        return data, path.name
+
+    if file_url:
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        session = async_get_clientsession(hass)
+        async with session.get(file_url, timeout=60) as resp:
+            if resp.status >= 400:
+                raise ValueError(f"file_url download failed: {resp.status}")
+            data = await resp.read()
+        return data, Path(file_url.split("?", 1)[0]).name or "attachment.bin"
+
+    raise ValueError("file_path or file_url is required")
+
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
+
+
+def _normalize_stored_value(value: Any) -> Any:
+    if isinstance(value, str):
+        normalized = value.strip()
+        lowered = normalized.lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+        return normalized
+    if isinstance(value, dict):
+        return {key: _normalize_stored_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_stored_value(item) for item in value]
+    return value
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -61,7 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     provider_specs = get_provider_specs()
     for subentry in entry.subentries.values():
         provider = subentry.subentry_type
-        cfg = dict(subentry.data)
+        cfg = _normalize_stored_value(dict(subentry.data))
         spec = provider_specs.get(provider)
         if spec is None:
             _LOGGER.warning("Unknown provider in subentry: %s", provider)
@@ -202,8 +281,19 @@ def _register_services(hass: HomeAssistant) -> None:
         target = call.data.get(ATTR_TARGET, "")
         message = str(call.data.get(ATTR_MESSAGE, "")).strip()
         camera_entity = str(call.data.get(ATTR_CAMERA_ENTITY, "")).strip()
+        file_path = str(call.data.get(ATTR_FILE_PATH, "")).strip()
+        file_url = str(call.data.get(ATTR_FILE_URL, "")).strip()
+        file_name = str(call.data.get(ATTR_FILE_NAME, "")).strip()
+        media_type = str(call.data.get(ATTR_MEDIA_TYPE, "")).strip().lower()
+        tts_text = str(call.data.get(ATTR_TTS_TEXT, "")).strip()
+        message_format = str(call.data.get(ATTR_MESSAGE_FORMAT, "")).strip().lower()
+        approval_id = str(call.data.get(ATTR_APPROVAL_ID, "")).strip()
+        raw_record_duration = call.data.get(ATTR_RECORD_DURATION)
+        record_duration = int(raw_record_duration) if raw_record_duration not in (None, "") else None
+        lookback = int(call.data.get(ATTR_LOOKBACK, 0) or 0)
+        gif_fps = int(call.data.get(ATTR_GIF_FPS, 2) or 2)
         wechat_account_id = str(call.data.get(ATTR_WECHAT_ACCOUNT_ID, "")).strip()
-        if not message and not camera_entity:
+        if not message and not camera_entity and not file_path and not file_url and not tts_text:
             return
         requested, normalized_target_type = _parse_channel(channel)
         resolved_target = str(target or "").strip()
@@ -236,17 +326,87 @@ def _register_services(hass: HomeAssistant) -> None:
             resolved_target = provider.selected_target()
         if not resolved_target:
             raise ValueError("target is required, or select a known target in the provider target selector entity")
+        if approval_id:
+            if provider.send_approval is None:
+                raise ValueError(f"Provider '{requested}' does not support approval buttons")
+            if not message:
+                raise ValueError("message is required when approval_id is provided")
+            await provider.send_approval(resolved_target, message, normalized_target_type, approval_id)
+            return
+        if tts_text:
+            if provider.send_tts is None:
+                raise ValueError(f"Provider '{requested}' does not support TTS sending")
+            await provider.send_tts(resolved_target, tts_text, normalized_target_type)
+            if message:
+                await provider.send_text(resolved_target, message, normalized_target_type)
+            return
         if camera_entity:
+            resolved_camera_entity = await async_resolve_camera_entity(hass, camera_entity)
+            if resolved_camera_entity is None:
+                raise ValueError(f"camera source not found: {camera_entity}")
+            if media_type == "video":
+                if provider.send_media is None:
+                    raise ValueError(f"Provider '{requested}' does not support video sending")
+                video_bytes, generated_name = await async_record_camera_clip(
+                    hass,
+                    resolved_camera_entity,
+                    duration=record_duration or DEFAULT_VIDEO_RECORD_DURATION,
+                    lookback=lookback,
+                )
+                await provider.send_media(
+                    resolved_target,
+                    video_bytes,
+                    "video",
+                    normalized_target_type,
+                    file_name or generated_name,
+                )
+                if message:
+                    await provider.send_text(resolved_target, message, normalized_target_type)
+                return
+            if media_type == "gif" or (media_type == "image" and file_name.lower().endswith(".gif")):
+                if provider.send_image is None:
+                    raise ValueError(f"Provider '{requested}' does not support GIF sending")
+                gif_bytes, _ = await async_capture_camera_gif(
+                    hass,
+                    resolved_camera_entity,
+                    duration=record_duration or DEFAULT_GIF_DURATION,
+                    fps=gif_fps,
+                )
+                await provider.send_image(resolved_target, gif_bytes, normalized_target_type)
+                if message:
+                    await provider.send_text(resolved_target, message, normalized_target_type)
+                return
             if provider.send_image is None:
                 raise ValueError(f"Provider '{requested}' does not support camera image sending")
             from homeassistant.components.camera import async_get_image
 
-            image = await async_get_image(hass, camera_entity)
+            image = await async_get_image(hass, resolved_camera_entity)
             await provider.send_image(resolved_target, image.content, normalized_target_type)
             if message:
                 await provider.send_text(resolved_target, message, normalized_target_type)
             return
+        if file_path or file_url:
+            if provider.send_media is None:
+                raise ValueError(f"Provider '{requested}' does not support media sending")
+            resolved_media_type = _infer_media_type(file_path, file_url, media_type)
+            media_bytes, detected_name = await _read_media_source(hass, file_path, file_url)
+            await provider.send_media(
+                resolved_target,
+                media_bytes,
+                resolved_media_type,
+                normalized_target_type,
+                file_name or detected_name,
+            )
+            if message:
+                await provider.send_text(resolved_target, message, normalized_target_type)
+            return
 
+        if message_format and requested == "qq":
+            client = getattr(provider, "client", None)
+            sender = getattr(client, "send_text_formatted", None)
+            if callable(sender):
+                await sender(resolved_target, message, normalized_target_type, message_format)
+                return
         await provider.send_text(resolved_target, message, normalized_target_type)
 
     if not hass.services.has_service(DOMAIN, SERVICE_SEND_MESSAGE):

@@ -56,6 +56,7 @@ async def ask_home_assistant(
     *,
     conversation_id: str,
     agent_id: str | None,
+    extra_system_prompt: str | None = None,
 ) -> str:
     """Route text through Home Assistant conversation APIs."""
     try:
@@ -76,6 +77,8 @@ async def ask_home_assistant(
                 kwargs["language"] = hass.config.language
             if "agent_id" in signature.parameters and agent_id:
                 kwargs["agent_id"] = agent_id
+            if "extra_system_prompt" in signature.parameters and extra_system_prompt:
+                kwargs["extra_system_prompt"] = extra_system_prompt
 
             result = await conversation_component.async_converse(**kwargs)
             reply = extract_speech_any(result)

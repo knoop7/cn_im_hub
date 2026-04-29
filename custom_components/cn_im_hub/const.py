@@ -57,6 +57,18 @@ ATTR_TARGET_TYPE: Final = "target_type"
 ATTR_CHANNEL: Final = "channel"
 ATTR_WECHAT_ACCOUNT_ID: Final = "wechat_account_id"
 ATTR_CAMERA_ENTITY: Final = "camera_entity"
+ATTR_FILE_PATH: Final = "file_path"
+ATTR_FILE_URL: Final = "file_url"
+ATTR_FILE_NAME: Final = "file_name"
+ATTR_MEDIA_TYPE: Final = "media_type"
+ATTR_TTS_TEXT: Final = "tts_text"
+ATTR_MESSAGE_FORMAT: Final = "message_format"
+ATTR_APPROVAL_ID: Final = "approval_id"
+ATTR_RECORD_DURATION: Final = "record_duration"
+ATTR_LOOKBACK: Final = "lookback"
+ATTR_GIF_FPS: Final = "gif_fps"
+DEFAULT_VIDEO_RECORD_DURATION: Final = 10
+DEFAULT_GIF_DURATION: Final = 3
 
 DEFAULT_FEISHU_TARGET_TYPE: Final = "chat_id"
 

@@ -44,6 +44,9 @@ class ProviderRuntime:
     selected_target: Callable[[], str]
     select_target: Callable[[str], Awaitable[None]]
     send_image: Callable[[str, bytes, str], Awaitable[None]] | None = None
+    send_media: Callable[[str, bytes, str, str, str | None], Awaitable[None]] | None = None
+    send_tts: Callable[[str, str, str], Awaitable[None]] | None = None
+    send_approval: Callable[[str, str, str, str], Awaitable[None]] | None = None
 
 
 @dataclass(slots=True)

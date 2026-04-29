@@ -26,13 +26,14 @@ class BaseProviderSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        existing = [
-            subentry
-            for subentry in self._get_entry().subentries.values()
-            if subentry.subentry_type == self._provider_spec.key
-        ]
-        if existing:
-            return self.async_abort(reason="already_configured")
+        if not self._provider_spec.allow_multiple:
+            existing = [
+                subentry
+                for subentry in self._get_entry().subentries.values()
+                if subentry.subentry_type == self._provider_spec.key
+            ]
+            if existing:
+                return self.async_abort(reason="already_configured")
         self._current = {}
         return await self.async_step_set_options(user_input)
 
@@ -52,6 +53,16 @@ class BaseProviderSubentryFlow(ConfigSubentryFlow):
         )
 
 
+def _normalize_user_input(data: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            normalized[key] = value.strip()
+        else:
+            normalized[key] = value
+    return normalized
+
+
 class SimpleProviderSubentryFlow(BaseProviderSubentryFlow):
     """Generic single-step provider flow."""
 
@@ -60,7 +71,7 @@ class SimpleProviderSubentryFlow(BaseProviderSubentryFlow):
     ) -> SubentryFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            data = {key: str(value).strip() for key, value in user_input.items()}
+            data = _normalize_user_input(user_input)
             try:
                 await self._provider_spec.validate_config(self.hass, data)
             except Exception as err:  # noqa: BLE001
