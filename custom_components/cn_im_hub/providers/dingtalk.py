@@ -47,16 +47,6 @@ def _extract_stream_sender_and_target(data: dict[str, Any]) -> tuple[str, str, s
     return conversation_id or "group", "group", display_name
 
 
-def _build_conversation_id(data: dict[str, Any]) -> str:
-    sender_id = str(data.get("senderStaffId") or data.get("sender_staff_id") or data.get("senderId") or data.get("sender_id") or "").strip()
-    conversation_id = str(data.get("conversationId") or data.get("conversation_id") or "").strip()
-    if sender_id:
-        return f"dingtalk:user:{sender_id}"
-    if conversation_id:
-        return f"dingtalk:group:{conversation_id}"
-    return "dingtalk:stream"
-
-
 class DingTalkClient:
     def __init__(self, hass: HomeAssistant, client_id: str, client_secret: str, agent_id: str) -> None:
         self._hass = hass
@@ -167,7 +157,6 @@ class DingTalkClient:
                     raw_data = callback.data if isinstance(callback.data, dict) else {}
                     incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
                     text = _extract_stream_text(raw_data)
-                    conversation_id = _build_conversation_id(raw_data)
                     if not text:
                         return dingtalk_stream.AckMessage.STATUS_OK, "OK"
 
@@ -184,7 +173,7 @@ class DingTalkClient:
                         execute_command(
                             outer._hass,
                             command,
-                            conversation_id=conversation_id,
+                            conversation_id="dingtalk:stream",
                             agent_id=outer._agent_id,
                         ),
                         outer._hass.loop,
@@ -328,7 +317,6 @@ async def async_setup_provider(
                     raw_data = callback.data if isinstance(callback.data, dict) else {}
                     incoming = dingtalk_stream.ChatbotMessage.from_dict(callback.data)
                     text = _extract_stream_text(raw_data)
-                    conversation_id = _build_conversation_id(raw_data)
                     if not text:
                         return dingtalk_stream.AckMessage.STATUS_OK, "OK"
                     try:
@@ -342,7 +330,7 @@ async def async_setup_provider(
                         execute_command(
                             outer._hass,
                             command,
-                            conversation_id=conversation_id,
+                            conversation_id="dingtalk:stream",
                             agent_id=outer._agent_id,
                         ),
                         outer._hass.loop,

@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 from urllib.parse import quote
 from dataclasses import dataclass
 from io import BytesIO
@@ -20,6 +21,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..const import WECHAT_DEFAULT_BASE_URL
+
+_LOGGER = logging.getLogger(__name__)
 
 _QR_LONG_POLL_TIMEOUT_MS = 35_000
 _DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000
@@ -217,6 +220,53 @@ def _encrypt_aes_ecb(plaintext: bytes, key: bytes) -> bytes:
     return encryptor.update(padded) + encryptor.finalize()
 
 
+def _decrypt_aes_ecb(ciphertext: bytes, key: bytes) -> bytes:
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+    decryptor = cipher.decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    unpadder = padding.PKCS7(128).unpadder()
+    return unpadder.update(padded) + unpadder.finalize()
+
+
+def _parse_aes_key(aes_key_b64: str) -> bytes:
+    decoded = base64.b64decode(aes_key_b64)
+    if len(decoded) == 16:
+        return decoded
+    if len(decoded) == 32:
+        try:
+            return bytes.fromhex(decoded.decode("ascii"))
+        except (ValueError, UnicodeDecodeError):
+            pass
+    raise ValueError(f"Invalid aes_key: decoded length {len(decoded)}")
+
+
+async def async_download_weixin_media(
+    hass: HomeAssistant,
+    *,
+    encrypt_query_param: str | None = None,
+    aes_key_b64: str | None = None,
+    full_url: str | None = None,
+    aeskey_hex: str | None = None,
+) -> bytes:
+    if aeskey_hex:
+        key = bytes.fromhex(aeskey_hex)
+    elif aes_key_b64:
+        key = _parse_aes_key(aes_key_b64)
+    else:
+        raise ValueError("No AES key provided")
+    url = full_url
+    if not url:
+        if not encrypt_query_param:
+            raise ValueError("No download URL")
+        url = f"{_WECHAT_CDN_BASE_URL}/download?encrypted_query_param={quote(encrypt_query_param, safe='')}"
+    session = async_get_clientsession(hass)
+    async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+        if resp.status >= 400:
+            raise RuntimeError(f"CDN download {resp.status}")
+        encrypted = await resp.read()
+    return _decrypt_aes_ecb(encrypted, key)
+
+
 async def async_send_weixin_image(
     hass: HomeAssistant,
     *,
@@ -311,6 +361,53 @@ async def async_send_weixin_image(
     return client_id
 
 
+async def async_get_typing_ticket(
+    hass: HomeAssistant,
+    *,
+    base_url: str,
+    token: str,
+    ilink_user_id: str,
+    context_token: str,
+) -> str:
+    session = async_get_clientsession(hass)
+    resp = await _api_post(
+        session,
+        base_url=base_url,
+        endpoint="ilink/bot/getconfig",
+        payload={
+            "ilink_user_id": ilink_user_id,
+            "context_token": context_token,
+            "base_info": {"channel_version": "ha-cn-im-hub"},
+        },
+        token=token,
+    )
+    return str(resp.get("typing_ticket") or "")
+
+
+async def async_send_typing(
+    hass: HomeAssistant,
+    *,
+    base_url: str,
+    token: str,
+    ilink_user_id: str,
+    typing_ticket: str,
+    status: int = 1,
+) -> None:
+    session = async_get_clientsession(hass)
+    await _api_post(
+        session,
+        base_url=base_url,
+        endpoint="ilink/bot/sendtyping",
+        payload={
+            "ilink_user_id": ilink_user_id,
+            "typing_ticket": typing_ticket,
+            "status": status,
+            "base_info": {"channel_version": "ha-cn-im-hub"},
+        },
+        token=token,
+    )
+
+
 def extract_text_body(message: dict[str, Any]) -> str:
     item_list = message.get("item_list") or []
     if not isinstance(item_list, list):
@@ -329,6 +426,44 @@ def extract_text_body(message: dict[str, Any]) -> str:
             if isinstance(text, str) and text.strip():
                 return text.strip()
     return ""
+
+
+@dataclass(slots=True)
+class InboundMedia:
+    kind: str
+    encrypt_query_param: str
+    aes_key_b64: str
+    full_url: str
+    file_name: str
+    aeskey_hex: str
+
+
+def extract_inbound_media(message: dict[str, Any]) -> InboundMedia | None:
+    item_list = message.get("item_list") or []
+    if not isinstance(item_list, list):
+        return None
+    for item in item_list:
+        if not isinstance(item, dict):
+            continue
+        itype = item.get("type")
+        if itype == 2:
+            img = item.get("image_item") or {}
+            media = img.get("media") or {}
+            eqp = media.get("encrypt_query_param") or ""
+            aes_key = media.get("aes_key") or ""
+            full_url = media.get("full_url") or ""
+            aeskey_hex = img.get("aeskey") or ""
+            if eqp or full_url:
+                return InboundMedia("image", eqp, aes_key, full_url, "", aeskey_hex)
+        if itype == 4:
+            fi = item.get("file_item") or {}
+            media = fi.get("media") or {}
+            eqp = media.get("encrypt_query_param") or ""
+            aes_key = media.get("aes_key") or ""
+            full_url = media.get("full_url") or ""
+            fname = fi.get("file_name") or ""
+            return InboundMedia("file", eqp, aes_key, full_url, fname, "")
+    return None
 
 
 def build_qr_data_url(text: str) -> str:

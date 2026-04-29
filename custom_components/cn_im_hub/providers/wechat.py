@@ -10,6 +10,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from custom_components.claw_assistant.runtime.events import EVENT_LIVE_PROGRESS
 
 from ..command import execute_command, parse_command
 from ..const import (
@@ -22,12 +23,18 @@ from ..const import (
 )
 from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
+from ..rich_media import ImageSegment, TextSegment, is_camera_entity, is_url, parse_reply_segments
+from ..upstream_prompt import build_upstream_extra_prompt
 from .base import ProviderSpec
 from .wechat_auth import (
     SESSION_EXPIRED_ERRCODE,
+    async_download_weixin_media,
+    async_get_typing_ticket,
     async_get_updates,
+    async_send_typing,
     async_send_weixin_image,
     async_send_weixin_text,
+    extract_inbound_media,
     extract_text_body,
 )
 from .wechat_flow import WeixinProviderSubentryFlow
@@ -38,6 +45,78 @@ _MAX_CONSECUTIVE_FAILURES = 3
 _BACKOFF_DELAY_SECONDS = 30
 _RETRY_DELAY_SECONDS = 2
 _SESSION_PAUSE_SECONDS = 3600
+_TYPING_TICKET_TTL = 23 * 3600
+_CONF_WECHAT_SHOW_LIVE_PROGRESS = "wechat_show_live_progress"
+_FILE_TEXT_EXTENSIONS = {".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".py", ".js", ".ts", ".html", ".css"}
+
+
+def _compress_image(raw: bytes, max_dim: int = 640, target_kb: int = 60) -> bytes:
+    from PIL import Image
+    from io import BytesIO
+    img = Image.open(BytesIO(raw))
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    w, h = img.size
+    if max(w, h) > max_dim:
+        scale = max_dim / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    for quality in (85, 60, 40, 20):
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality)
+        if buf.tell() <= target_kb * 1024:
+            return buf.getvalue()
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=20)
+    return buf.getvalue()
+
+
+def _extract_file_text(raw: bytes, file_name: str) -> str:
+    import os
+    ext = os.path.splitext(file_name)[1].lower() if file_name else ""
+    if ext in _FILE_TEXT_EXTENSIONS or not ext:
+        try:
+            return raw.decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            return ""
+    if ext in (".doc", ".docx"):
+        try:
+            from io import BytesIO
+            from zipfile import ZipFile
+            import xml.etree.ElementTree as ET
+            zf = ZipFile(BytesIO(raw))
+            xml_content = zf.read("word/document.xml")
+            tree = ET.fromstring(xml_content)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            return "\n".join(
+                "".join(node.text or "" for node in p.iter(f"{{{ns['w']}}}t"))
+                for p in tree.iter(f"{{{ns['w']}}}p")
+            )
+        except Exception:  # noqa: BLE001
+            return ""
+    return ""
+
+
+def _clean_progress_text(text: str) -> str:
+    value = text.strip().replace("\n", " ")
+    if value.startswith("┊"):
+        value = value[1:].lstrip()
+    if value.startswith("*") and value.endswith("*") and len(value) >= 2:
+        value = value[1:-1].strip()
+    return value
+
+
+def _format_live_progress(payload: dict[str, Any]) -> str:
+    display_text = str(payload.get("display_text") or "").strip()
+    if display_text:
+        return _clean_progress_text(display_text)[:200]
+    phase = str(payload.get("phase") or "").strip()
+    text = str(payload.get("text") or "").strip()
+    tool_name = str(payload.get("tool_name") or "").strip()
+    if phase == "thinking":
+        return text[:120]
+    if phase == "tool_call" and tool_name:
+        return f"tool: {tool_name}"
+    return text[:120]
 
 
 class WeixinClient:
@@ -53,6 +132,7 @@ class WeixinClient:
         user_id: str,
         conversation_agent_id: str,
         subentry_id: str,
+        show_live_progress: bool,
     ) -> None:
         self._hass = hass
         self._account_id = account_id
@@ -69,6 +149,8 @@ class WeixinClient:
         self._sync_buf = ""
         self._pause_until = 0.0
         self._tracker = None
+        self._typing_tickets: dict[str, tuple[str, float]] = {}
+        self._show_live_progress = show_live_progress
 
     @property
     def status(self) -> str:
@@ -184,13 +266,143 @@ class WeixinClient:
                 await asyncio.sleep(30 if consecutive_failures >= 3 else 2)
         self._status = "disconnected"
 
+    async def _get_typing_ticket(self, user_id: str, context_token: str) -> str:
+        now = asyncio.get_running_loop().time()
+        cached = self._typing_tickets.get(user_id)
+        if cached and (now - cached[1]) < _TYPING_TICKET_TTL:
+            return cached[0]
+        ticket = await async_get_typing_ticket(
+            self._hass,
+            base_url=self._base_url,
+            token=self._token,
+            ilink_user_id=user_id,
+            context_token=context_token,
+        )
+        if ticket:
+            self._typing_tickets[user_id] = (ticket, now)
+        return ticket
+
+    async def _set_typing(self, user_id: str, context_token: str, *, status: int = 1) -> None:
+        try:
+            ticket = await self._get_typing_ticket(user_id, context_token)
+            if not ticket:
+                return
+            await async_send_typing(
+                self._hass,
+                base_url=self._base_url,
+                token=self._token,
+                ilink_user_id=user_id,
+                typing_ticket=ticket,
+                status=status,
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Weixin typing indicator failed for %s", user_id)
+
+    async def _typing_keepalive(self, user_id: str, context_token: str) -> None:
+        while True:
+            await self._set_typing(user_id, context_token, status=1)
+            await asyncio.sleep(10)
+
+    async def _run_live_progress_bridge(
+        self,
+        *,
+        conversation_id: str,
+        to_user_id: str,
+        context_token: str,
+    ) -> None:
+        if not self._show_live_progress:
+            await asyncio.Future()
+
+        queue: asyncio.Queue[str] = asyncio.Queue()
+
+        @callback
+        def _listener(event) -> None:
+            payload = event.data or {}
+            if payload.get("conversation_id") != conversation_id:
+                return
+            text = _format_live_progress(payload)
+            if text:
+                queue.put_nowait(text)
+
+        unsub = self._hass.bus.async_listen(EVENT_LIVE_PROGRESS, _listener)
+        last_sent = ""
+        try:
+            while True:
+                text = await queue.get()
+                if text == last_sent:
+                    continue
+                await async_send_weixin_text(
+                    self._hass,
+                    base_url=self._base_url,
+                    token=self._token,
+                    to_user_id=to_user_id,
+                    context_token=context_token,
+                    text=text,
+                )
+                last_sent = text
+        finally:
+            unsub()
+
+    async def _resolve_image(self, source: str) -> bytes | None:
+        try:
+            if is_camera_entity(source):
+                from homeassistant.components.camera import async_get_image
+                image = await async_get_image(self._hass, source)
+                return image.content
+            if is_url(source):
+                from homeassistant.helpers.aiohttp_client import async_get_clientsession
+                session = async_get_clientsession(self._hass)
+                async with session.get(source, timeout=30) as resp:
+                    if resp.status < 400:
+                        return await resp.read()
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("Failed to resolve image source: %s", source)
+        return None
+
+    async def _process_inbound_media(self, media: Any, text: str) -> str:
+        from .wechat_auth import InboundMedia
+        if not isinstance(media, InboundMedia):
+            return text or ""
+        try:
+            raw = await async_download_weixin_media(
+                self._hass,
+                encrypt_query_param=media.encrypt_query_param or None,
+                aes_key_b64=media.aes_key_b64 or None,
+                full_url=media.full_url or None,
+                aeskey_hex=media.aeskey_hex or None,
+            )
+            if media.kind == "image":
+                import tempfile
+                compressed = await self._hass.async_add_executor_job(
+                    _compress_image, raw, 640, 60
+                )
+                tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                tmp.write(compressed)
+                tmp.close()
+                prefix = text + "\n" if text else ""
+                return f"{prefix}[ATTACHMENT:image/jpeg:{tmp.name}]"
+            if media.kind == "file":
+                file_text = await self._hass.async_add_executor_job(
+                    _extract_file_text, raw, media.file_name
+                )
+                if file_text:
+                    prefix = text + "\n" if text else ""
+                    name = media.file_name or "file"
+                    return f"{prefix}[用户发送了文件 {name}，内容如下：]\n{file_text[:8000]}"
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Failed to process inbound media: %s", media.kind)
+        return text or ""
+
     async def _handle_message(self, message: dict[str, Any]) -> None:
         from_user_id = str(message.get("from_user_id") or "").strip()
         if not from_user_id:
             return
         text = extract_text_body(message)
-        if not text:
+        media = extract_inbound_media(message)
+        if not text and not media:
             return
+        if media:
+            text = await self._process_inbound_media(media, text)
         if self._tracker is not None:
             await self._tracker.async_record(
                 provider=PROVIDER_WECHAT,
@@ -206,26 +418,62 @@ class WeixinClient:
         command = parse_command(text)
         if command is None:
             return
-        reply = await execute_command(
-            self._hass,
-            command,
-            conversation_id=f"wechat:{self._account_id}:{from_user_id}",
-            agent_id=self._conversation_agent_id or None,
-        )
-        if not reply:
-            return
         resolved_context = self._context_tokens.get(from_user_id)
         if not resolved_context:
             _LOGGER.warning("Weixin context_token missing for user %s", from_user_id)
             return
-        await async_send_weixin_text(
-            self._hass,
-            base_url=self._base_url,
-            token=self._token,
-            to_user_id=from_user_id,
-            context_token=resolved_context,
-            text=reply,
+        typing_task = asyncio.create_task(
+            self._typing_keepalive(from_user_id, resolved_context)
         )
+        progress_task = asyncio.create_task(
+            self._run_live_progress_bridge(
+                conversation_id=f"wechat:{self._account_id}:{from_user_id}",
+                to_user_id=from_user_id,
+                context_token=resolved_context,
+            )
+        )
+        try:
+            reply = await execute_command(
+                self._hass,
+                command,
+                conversation_id=f"wechat:{self._account_id}:{from_user_id}",
+                agent_id=self._conversation_agent_id or None,
+                extra_system_prompt=build_upstream_extra_prompt(supports_image=True),
+            )
+            if not reply:
+                return
+            _LOGGER.info("Reply to parse: %r", reply[:200])
+            segments = parse_reply_segments(reply)
+            _LOGGER.info("Parsed segments: %s", segments)
+            for seg in segments:
+                if isinstance(seg, TextSegment):
+                    await async_send_weixin_text(
+                        self._hass,
+                        base_url=self._base_url,
+                        token=self._token,
+                        to_user_id=from_user_id,
+                        context_token=resolved_context,
+                        text=seg.text,
+                    )
+                elif isinstance(seg, ImageSegment):
+                    image_bytes = await self._resolve_image(seg.source)
+                    if image_bytes:
+                        await async_send_weixin_image(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            image_bytes=image_bytes,
+                        )
+        finally:
+            progress_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await progress_task
+            typing_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await typing_task
+            await self._set_typing(from_user_id, resolved_context, status=2)
 
     async def _async_save_state(self) -> None:
         await self._store.async_save(
@@ -280,6 +528,7 @@ async def async_setup_provider(
         user_id=str(config.get(CONF_WECHAT_USER_ID, "")).strip(),
         conversation_agent_id=agent_id,
         subentry_id=subentry_id,
+        show_live_progress=config.get(_CONF_WECHAT_SHOW_LIVE_PROGRESS, False) is True,
     )
     tracker = await async_get_tracker(hass, subentry_id)
     client._tracker = tracker
@@ -312,6 +561,7 @@ def _build_schema(current: dict[str, Any]) -> vol.Schema:
             vol.Required(CONF_WECHAT_TOKEN, default=current.get(CONF_WECHAT_TOKEN, "")): str,
             vol.Required(CONF_WECHAT_ACCOUNT_ID, default=current.get(CONF_WECHAT_ACCOUNT_ID, "")): str,
             vol.Optional(CONF_WECHAT_BASE_URL, default=current.get(CONF_WECHAT_BASE_URL, WECHAT_DEFAULT_BASE_URL)): str,
+            vol.Optional(_CONF_WECHAT_SHOW_LIVE_PROGRESS, default=current.get(_CONF_WECHAT_SHOW_LIVE_PROGRESS, False)): bool,
         }
     )
 
