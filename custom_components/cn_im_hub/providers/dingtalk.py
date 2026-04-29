@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -123,10 +124,12 @@ class DingTalkClient:
 
     async def send_image(self, target: str, image_bytes: bytes, target_type: str) -> None:
         token = await self._get_token()
-        photo_url = await self._upload_image(image_bytes)
+        media_id = await self._upload_image(image_bytes)
         target = target.strip()
         if not target:
             raise ValueError("DingTalk target is required")
+
+        msg_param = json.dumps({"photoURL": media_id}, ensure_ascii=False)
 
         if target_type == "user":
             path = "/v1.0/robot/oToMessages/batchSend"
@@ -134,7 +137,7 @@ class DingTalkClient:
                 "robotCode": self._client_id,
                 "userIds": [target],
                 "msgKey": "sampleImageMsg",
-                "msgParam": json.dumps({"photoURL": photo_url}, ensure_ascii=False),
+                "msgParam": msg_param,
             }
         else:
             path = "/v1.0/robot/groupMessages/send"
@@ -142,7 +145,7 @@ class DingTalkClient:
                 "robotCode": self._client_id,
                 "openConversationId": target,
                 "msgKey": "sampleImageMsg",
-                "msgParam": json.dumps({"photoURL": photo_url}, ensure_ascii=False),
+                "msgParam": msg_param,
             }
 
         async with self._session.post(
@@ -152,7 +155,9 @@ class DingTalkClient:
             timeout=30,
         ) as resp:
             if resp.status >= 400:
-                raise RuntimeError(f"DingTalk image send failed: {resp.status} {await resp.text()}")
+                error_text = await resp.text()
+                _LOGGER.error("DingTalk image send failed: %s, response: %s", resp.status, error_text)
+                raise RuntimeError(f"DingTalk image send failed: {resp.status} {error_text}")
 
     async def _run_stream(self) -> None:
         """Use official Stream SDK if available, without webhook mode."""
@@ -264,13 +269,16 @@ class DingTalkClient:
             timeout=60,
         ) as resp:
             data = await resp.json(content_type=None)
-            if resp.status >= 400 or int(data.get("errcode") or 0) != 0:
-                raise RuntimeError(f"DingTalk image upload failed: {resp.status} {data}")
+            if resp.status >= 400:
+                raise RuntimeError(f"DingTalk image upload failed: HTTP {resp.status} {data}")
+            errcode = int(data.get("errcode") or 0)
+            if errcode != 0:
+                errmsg = data.get("errmsg", "Unknown error")
+                raise RuntimeError(f"DingTalk image upload failed: errcode={errcode}, errmsg={errmsg}")
         media_id = str(data.get("media_id") or "")
         if not media_id:
             raise RuntimeError(f"DingTalk image upload missing media_id: {data}")
-        clean_media_id = media_id[1:] if media_id.startswith("@") else media_id
-        return f"https://down.dingtalk.com/media/{clean_media_id}"
+        return media_id
 
 
 async def async_validate_config(_: HomeAssistant, config: dict[str, Any]) -> None:
