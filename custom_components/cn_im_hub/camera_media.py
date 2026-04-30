@@ -12,6 +12,34 @@ import time
 from homeassistant.core import HomeAssistant
 
 
+def resolve_ha_local_path(hass: HomeAssistant, source: str) -> Path | None:
+    """Resolve Home Assistant virtual/local paths to a real filesystem path."""
+
+    candidate = source.strip()
+    if not candidate:
+        return None
+
+    direct_path = Path(candidate)
+    if direct_path.is_file():
+        return direct_path
+
+    if candidate.startswith("/config/"):
+        resolved = Path(hass.config.path(candidate.removeprefix("/config/")))
+        return resolved if resolved.is_file() else None
+
+    if candidate.startswith("/local/"):
+        relative = candidate.removeprefix("/local/").lstrip("/")
+        resolved = Path(hass.config.path("www", relative))
+        return resolved if resolved.is_file() else None
+
+    if candidate.startswith("/media/local/"):
+        relative = candidate.removeprefix("/media/local/").lstrip("/")
+        resolved = Path(hass.config.path("media", relative))
+        return resolved if resolved.is_file() else None
+
+    return None
+
+
 async def async_resolve_camera_entity(
     hass: HomeAssistant,
     source: str,
@@ -97,7 +125,7 @@ async def async_capture_camera_gif(
     *,
     duration: int = 3,
     fps: int = 2,
-    max_dim: int = 640,
+    max_dim: int = 960,
 ) -> tuple[bytes, str]:
     """Capture a short animated GIF from camera snapshots."""
 
@@ -289,29 +317,44 @@ async def _async_ensure_mp4_compatible(path: Path, *, timeout: int) -> Path:
 def _build_gif(frames: list[bytes], max_dim: int, duration_ms: int) -> bytes:
     from PIL import Image
 
-    pil_frames: list[Image.Image] = []
-    for raw in frames:
-        image = Image.open(BytesIO(raw))
-        if image.mode not in ("RGB", "P"):
-            image = image.convert("RGB")
-        width, height = image.size
-        if max(width, height) > max_dim:
-            scale = max_dim / max(width, height)
-            image = image.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
-        pil_frames.append(image.copy())
-        image.close()
+    def _prepare_frames(target_dim: int) -> list[Image.Image]:
+        prepared: list[Image.Image] = []
+        for raw in frames:
+            image = Image.open(BytesIO(raw))
+            if image.mode not in ("RGB", "P"):
+                image = image.convert("RGB")
+            else:
+                image = image.convert("RGB")
+            width, height = image.size
+            if max(width, height) > target_dim:
+                scale = target_dim / max(width, height)
+                image = image.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+            image = image.quantize(colors=128, method=Image.MEDIANCUT)
+            prepared.append(image.copy())
+            image.close()
+        return prepared
 
-    if not pil_frames:
-        raise ValueError("No frames captured for GIF")
+    def _encode(prepared_frames: list[Image.Image]) -> bytes:
+        if not prepared_frames:
+            raise ValueError("No frames captured for GIF")
+        out = BytesIO()
+        prepared_frames[0].save(
+            out,
+            format="GIF",
+            save_all=True,
+            append_images=prepared_frames[1:],
+            duration=duration_ms,
+            loop=0,
+            optimize=True,
+            disposal=2,
+        )
+        return out.getvalue()
 
-    out = BytesIO()
-    pil_frames[0].save(
-        out,
-        format="GIF",
-        save_all=True,
-        append_images=pil_frames[1:],
-        duration=duration_ms,
-        loop=0,
-        optimize=False,
-    )
-    return out.getvalue()
+    primary_frames = _prepare_frames(max_dim)
+    gif_bytes = _encode(primary_frames)
+    if len(gif_bytes) <= 2 * 1024 * 1024:
+        return gif_bytes
+
+    fallback_dim = max(240, int(max_dim * 0.75))
+    fallback_frames = _prepare_frames(fallback_dim)
+    return _encode(fallback_frames)

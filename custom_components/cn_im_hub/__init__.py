@@ -48,6 +48,7 @@ from .camera_media import (
     async_capture_camera_gif,
     async_record_camera_clip,
     async_resolve_camera_entity,
+    resolve_ha_local_path,
 )
 from .models import HubRuntime, ProviderRuntime
 from .providers.registry import get_provider_specs
@@ -93,8 +94,8 @@ def _infer_media_type(file_path: str, file_url: str, explicit_media_type: str) -
 
 async def _read_media_source(hass: HomeAssistant, file_path: str, file_url: str) -> tuple[bytes, str]:
     if file_path:
-        path = Path(file_path)
-        if not path.is_file():
+        path = resolve_ha_local_path(hass, file_path)
+        if path is None:
             raise ValueError(f"file_path not found: {file_path}")
         data = await hass.async_add_executor_job(path.read_bytes)
         return data, path.name
