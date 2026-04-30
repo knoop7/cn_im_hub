@@ -10,7 +10,11 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from custom_components.claw_assistant.runtime.events import EVENT_LIVE_PROGRESS
+
+try:
+    from custom_components.claw_assistant.runtime.events import EVENT_LIVE_PROGRESS
+except ModuleNotFoundError:
+    EVENT_LIVE_PROGRESS = "claw_assistant_live_progress"
 
 from ..camera_media import (
     async_capture_camera_gif,

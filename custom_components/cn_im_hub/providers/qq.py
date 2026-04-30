@@ -19,7 +19,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 import voluptuous as vol
-from custom_components.claw_assistant.runtime.events import EVENT_LIVE_PROGRESS
+
+try:
+    from custom_components.claw_assistant.runtime.events import EVENT_LIVE_PROGRESS
+except ModuleNotFoundError:
+    EVENT_LIVE_PROGRESS = "claw_assistant_live_progress"
 
 from ..command import execute_command, parse_command
 from ..camera_media import (
