@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow as HAConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
 from .const import CONF_AGENT_ID, DOMAIN
@@ -26,6 +27,19 @@ async def _get_preferred_agent_id(hass) -> str:
     except Exception as err:  # noqa: BLE001
         _LOGGER.debug("Unable to resolve preferred assist pipeline: %r", err)
     return ""
+
+
+def _normalize_agent_id_for_storage(hass, agent_id: str) -> str:
+    candidate = agent_id.strip()
+    if not candidate or candidate == "conversation.home_assistant":
+        return candidate
+
+    if candidate.startswith("conversation."):
+        entity = er.async_get(hass).async_get(candidate)
+        if entity and entity.config_entry_id:
+            return entity.config_entry_id
+
+    return candidate
 
 
 def _agent_selector(hass) -> selector.ConversationAgentSelector:
@@ -47,7 +61,11 @@ class ConfigFlow(HAConfigFlow, domain=DOMAIN):
             if not agent_id:
                 errors["base"] = "agent_id_required"
             else:
-                return self.async_create_entry(title="", data={}, options={CONF_AGENT_ID: agent_id})
+                return self.async_create_entry(
+                    title="",
+                    data={},
+                    options={CONF_AGENT_ID: _normalize_agent_id_for_storage(self.hass, agent_id)},
+                )
 
         return self.async_show_form(
             step_id="user",
@@ -88,7 +106,10 @@ class OptionsFlowHandler(OptionsFlow):
             if not agent_id:
                 errors["base"] = "agent_id_required"
             else:
-                return self.async_create_entry(title="", data={CONF_AGENT_ID: agent_id})
+                return self.async_create_entry(
+                    title="",
+                    data={CONF_AGENT_ID: _normalize_agent_id_for_storage(self.hass, agent_id)},
+                )
 
         return self.async_show_form(
             step_id="init",

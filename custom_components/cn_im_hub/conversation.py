@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any
 
 from homeassistant.core import Context, HomeAssistant
+from homeassistant.helpers import entity_registry as er
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def extract_speech(response: dict[str, Any] | None) -> str:
@@ -59,6 +63,7 @@ async def ask_home_assistant(
     extra_system_prompt: str | None = None,
 ) -> str:
     """Route text through Home Assistant conversation APIs."""
+    resolved_agent_id = _normalize_agent_id_for_runtime(hass, str(agent_id or "").strip())
     try:
         from homeassistant.components import conversation as conversation_component
 
@@ -75,8 +80,8 @@ async def ask_home_assistant(
                 kwargs["context"] = Context()
             if "language" in signature.parameters:
                 kwargs["language"] = hass.config.language
-            if "agent_id" in signature.parameters and agent_id:
-                kwargs["agent_id"] = agent_id
+            if "agent_id" in signature.parameters and resolved_agent_id:
+                kwargs["agent_id"] = resolved_agent_id
             if "extra_system_prompt" in signature.parameters and extra_system_prompt:
                 kwargs["extra_system_prompt"] = extra_system_prompt
 
@@ -84,8 +89,8 @@ async def ask_home_assistant(
             reply = extract_speech_any(result)
             if reply:
                 return reply
-    except Exception:
-        pass
+    except Exception as err:
+        _LOGGER.debug("cn_im_hub async_converse failed with agent_id=%s: %s", resolved_agent_id, err)
 
     if hass.services.has_service("conversation", "process"):
         data: dict[str, Any] = {
@@ -93,8 +98,8 @@ async def ask_home_assistant(
             "conversation_id": conversation_id,
             "language": hass.config.language,
         }
-        if agent_id:
-            data["agent_id"] = agent_id
+        if resolved_agent_id:
+            data["agent_id"] = resolved_agent_id
         result = await hass.services.async_call(
             "conversation",
             "process",
@@ -107,3 +112,16 @@ async def ask_home_assistant(
             return reply
 
     return "暂时无法生成回复，请检查当前 conversation agent 配置。"
+
+
+def _normalize_agent_id_for_runtime(hass: HomeAssistant, agent_id: str) -> str:
+    candidate = agent_id.strip()
+    if not candidate or candidate == "conversation.home_assistant":
+        return candidate
+
+    if candidate.startswith("conversation."):
+        entity = er.async_get(hass).async_get(candidate)
+        if entity and entity.config_entry_id:
+            return entity.config_entry_id
+
+    return candidate
