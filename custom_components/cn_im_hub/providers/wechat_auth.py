@@ -267,34 +267,42 @@ async def async_download_weixin_media(
     return _decrypt_aes_ecb(encrypted, key)
 
 
-async def async_send_weixin_image(
-    hass: HomeAssistant,
+@dataclass(slots=True)
+class _UploadedMedia:
+    encrypt_query_param: str
+    aes_key_hex: str
+    ciphertext_size: int
+    plaintext_size: int
+
+
+async def _async_upload_to_wechat_cdn(
+    session: aiohttp.ClientSession,
     *,
     base_url: str,
     token: str,
     to_user_id: str,
-    context_token: str,
-    image_bytes: bytes,
-) -> str:
-    if not image_bytes:
-        raise ValueError("Weixin image data is empty")
+    media_bytes: bytes,
+    media_type: int,
+) -> _UploadedMedia:
+    """Generic CDN upload pipeline: encrypt → getuploadurl → POST CDN.
 
-    session = async_get_clientsession(hass)
-    client_id = f"cn_im_hub_{uuid4().hex}"
+    Mirrors openclaw-weixin upload.ts uploadMediaToCdn().
+    media_type: 1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE.
+    """
     filekey = uuid4().hex
     aes_key = uuid4().bytes
-    ciphertext = _encrypt_aes_ecb(image_bytes, aes_key)
     aes_key_hex = aes_key.hex()
+    ciphertext = _encrypt_aes_ecb(media_bytes, aes_key)
     upload_data = await _api_post(
         session,
         base_url=base_url,
         endpoint="ilink/bot/getuploadurl",
         payload={
             "filekey": filekey,
-            "media_type": 1,
+            "media_type": media_type,
             "to_user_id": to_user_id,
-            "rawsize": len(image_bytes),
-            "rawfilemd5": hashlib.md5(image_bytes).hexdigest(),
+            "rawsize": len(media_bytes),
+            "rawfilemd5": hashlib.md5(media_bytes).hexdigest(),
             "filesize": len(ciphertext),
             "no_need_thumb": True,
             "aeskey": aes_key_hex,
@@ -303,7 +311,7 @@ async def async_send_weixin_image(
         token=token,
     )
     upload_param = str(upload_data.get("upload_param") or "")
-    upload_full_url = str(upload_data.get("upload_full_url") or "")
+    upload_full_url = str(upload_data.get("upload_full_url") or "").strip()
     if upload_full_url:
         upload_url = upload_full_url
     elif upload_param:
@@ -318,7 +326,7 @@ async def async_send_weixin_image(
         upload_url,
         data=ciphertext,
         headers={"Content-Type": "application/octet-stream"},
-        timeout=aiohttp.ClientTimeout(total=60),
+        timeout=aiohttp.ClientTimeout(total=120),
     ) as resp:
         if resp.status >= 400:
             raw = await resp.text()
@@ -326,7 +334,33 @@ async def async_send_weixin_image(
         encrypt_query_param = str(resp.headers.get("x-encrypted-param") or "")
     if not encrypt_query_param:
         raise ValueError("Weixin CDN upload missing x-encrypted-param")
+    return _UploadedMedia(
+        encrypt_query_param=encrypt_query_param,
+        aes_key_hex=aes_key_hex,
+        ciphertext_size=len(ciphertext),
+        plaintext_size=len(media_bytes),
+    )
 
+
+def _build_cdn_media(uploaded: _UploadedMedia) -> dict[str, Any]:
+    """Build CDNMedia dict matching openclaw-weixin send.ts."""
+    return {
+        "encrypt_query_param": uploaded.encrypt_query_param,
+        "aes_key": base64.b64encode(uploaded.aes_key_hex.encode("utf-8")).decode("ascii"),
+        "encrypt_type": 1,
+    }
+
+
+async def _async_send_message_with_item(
+    session: aiohttp.ClientSession,
+    *,
+    base_url: str,
+    token: str,
+    to_user_id: str,
+    context_token: str,
+    item: dict[str, Any],
+) -> str:
+    client_id = f"cn_im_hub_{uuid4().hex}"
     await _api_post(
         session,
         base_url=base_url,
@@ -338,20 +372,7 @@ async def async_send_weixin_image(
                 "client_id": client_id,
                 "message_type": 2,
                 "message_state": 2,
-                "item_list": [
-                    {
-                        "type": 2,
-                        "image_item": {
-                            "media": {
-                                "encrypt_query_param": encrypt_query_param,
-                                "aes_key": base64.b64encode(aes_key_hex.encode("utf-8")).decode("ascii"),
-                                "encrypt_type": 1,
-                            }
-                            ,
-                            "mid_size": len(ciphertext),
-                        },
-                    }
-                ],
+                "item_list": [item],
                 "context_token": context_token,
             },
             "base_info": {"channel_version": "ha-cn-im-hub"},
@@ -359,6 +380,124 @@ async def async_send_weixin_image(
         token=token,
     )
     return client_id
+
+
+async def async_send_weixin_image(
+    hass: HomeAssistant,
+    *,
+    base_url: str,
+    token: str,
+    to_user_id: str,
+    context_token: str,
+    image_bytes: bytes,
+) -> str:
+    """Send an image (no compression). Used for raw photos and animated GIFs."""
+    if not image_bytes:
+        raise ValueError("Weixin image data is empty")
+    session = async_get_clientsession(hass)
+    uploaded = await _async_upload_to_wechat_cdn(
+        session,
+        base_url=base_url,
+        token=token,
+        to_user_id=to_user_id,
+        media_bytes=image_bytes,
+        media_type=1,
+    )
+    item = {
+        "type": 2,
+        "image_item": {
+            "media": _build_cdn_media(uploaded),
+            "mid_size": uploaded.ciphertext_size,
+        },
+    }
+    return await _async_send_message_with_item(
+        session,
+        base_url=base_url,
+        token=token,
+        to_user_id=to_user_id,
+        context_token=context_token,
+        item=item,
+    )
+
+
+async def async_send_weixin_video(
+    hass: HomeAssistant,
+    *,
+    base_url: str,
+    token: str,
+    to_user_id: str,
+    context_token: str,
+    video_bytes: bytes,
+) -> str:
+    """Send a video (no compression)."""
+    if not video_bytes:
+        raise ValueError("Weixin video data is empty")
+    session = async_get_clientsession(hass)
+    uploaded = await _async_upload_to_wechat_cdn(
+        session,
+        base_url=base_url,
+        token=token,
+        to_user_id=to_user_id,
+        media_bytes=video_bytes,
+        media_type=2,
+    )
+    item = {
+        "type": 5,
+        "video_item": {
+            "media": _build_cdn_media(uploaded),
+            "video_size": uploaded.ciphertext_size,
+        },
+    }
+    return await _async_send_message_with_item(
+        session,
+        base_url=base_url,
+        token=token,
+        to_user_id=to_user_id,
+        context_token=context_token,
+        item=item,
+    )
+
+
+async def async_send_weixin_file(
+    hass: HomeAssistant,
+    *,
+    base_url: str,
+    token: str,
+    to_user_id: str,
+    context_token: str,
+    file_bytes: bytes,
+    file_name: str,
+) -> str:
+    """Send a file attachment."""
+    if not file_bytes:
+        raise ValueError("Weixin file data is empty")
+    if not file_name:
+        raise ValueError("Weixin file name is required")
+    session = async_get_clientsession(hass)
+    uploaded = await _async_upload_to_wechat_cdn(
+        session,
+        base_url=base_url,
+        token=token,
+        to_user_id=to_user_id,
+        media_bytes=file_bytes,
+        media_type=3,
+    )
+    item = {
+        "type": 4,
+        "file_item": {
+            "media": _build_cdn_media(uploaded),
+            "file_name": file_name,
+            "len": str(uploaded.plaintext_size),
+        },
+    }
+    return await _async_send_message_with_item(
+        session,
+        base_url=base_url,
+        token=token,
+        to_user_id=to_user_id,
+        context_token=context_token,
+        item=item,
+    )
 
 
 async def async_get_typing_ticket(

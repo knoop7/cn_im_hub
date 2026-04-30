@@ -12,6 +12,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from custom_components.claw_assistant.runtime.events import EVENT_LIVE_PROGRESS
 
+from ..camera_media import (
+    async_capture_camera_gif,
+    async_record_camera_clip,
+    async_record_remote_stream_clip,
+    async_resolve_camera_entity,
+    resolve_ha_local_path,
+)
 from ..command import execute_command, parse_command
 from ..const import (
     CONF_WECHAT_ACCOUNT_ID,
@@ -23,7 +30,16 @@ from ..const import (
 )
 from ..known_targets import async_get_tracker
 from ..models import ProviderRuntime
-from ..rich_media import ImageSegment, TextSegment, is_camera_entity, is_url, parse_reply_segments
+from ..rich_media import (
+    FileSegment,
+    GifSegment,
+    ImageSegment,
+    TextSegment,
+    VideoSegment,
+    is_camera_entity,
+    is_url,
+    parse_reply_segments,
+)
 from ..upstream_prompt import build_upstream_extra_prompt
 from .base import ProviderSpec
 from .wechat_auth import (
@@ -32,8 +48,10 @@ from .wechat_auth import (
     async_get_typing_ticket,
     async_get_updates,
     async_send_typing,
+    async_send_weixin_file,
     async_send_weixin_image,
     async_send_weixin_text,
+    async_send_weixin_video,
     extract_inbound_media,
     extract_text_body,
 )
@@ -48,6 +66,9 @@ _SESSION_PAUSE_SECONDS = 3600
 _TYPING_TICKET_TTL = 23 * 3600
 _CONF_WECHAT_SHOW_LIVE_PROGRESS = "wechat_show_live_progress"
 _FILE_TEXT_EXTENSIONS = {".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".py", ".js", ".ts", ".html", ".css"}
+_GIF_COMPRESS_THRESHOLD_BYTES = 2 * 1024 * 1024
+_GIF_MAX_DIMENSION = 360
+_REMOTE_STREAM_SUFFIXES = (".m3u8", ".m3u", ".mpd", ".ts")
 
 
 def _compress_image(raw: bytes, max_dim: int = 640, target_kb: int = 60) -> bytes:
@@ -68,6 +89,47 @@ def _compress_image(raw: bytes, max_dim: int = 640, target_kb: int = 60) -> byte
     buf = BytesIO()
     img.save(buf, format="JPEG", quality=20)
     return buf.getvalue()
+
+
+def _compress_gif(raw: bytes, max_dim: int = _GIF_MAX_DIMENSION) -> bytes:
+    """Shrink an animated GIF: scale frames down if largest dim exceeds max_dim.
+
+    Preserves animation. Returns original bytes if PIL fails or no resize needed.
+    """
+    try:
+        from PIL import Image, ImageSequence
+        from io import BytesIO
+        img = Image.open(BytesIO(raw))
+        w, h = img.size
+        if max(w, h) <= max_dim:
+            return raw
+        scale = max_dim / max(w, h)
+        new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+        frames: list[Image.Image] = []
+        durations: list[int] = []
+        for frame in ImageSequence.Iterator(img):
+            frames.append(frame.convert("RGBA").resize(new_size, Image.LANCZOS))
+            durations.append(frame.info.get("duration", 80))
+        out = BytesIO()
+        frames[0].save(
+            out,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=durations,
+            loop=img.info.get("loop", 0),
+            disposal=2,
+            optimize=True,
+        )
+        return out.getvalue()
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("GIF compress failed (using original): %s", err)
+        return raw
+
+
+def _is_remote_stream_source(source: str) -> bool:
+    value = source.lower().strip()
+    return value.startswith(("rtsp://", "rtsps://")) or any(part in value for part in _REMOTE_STREAM_SUFFIXES)
 
 
 def _extract_file_text(raw: bytes, file_name: str) -> str:
@@ -202,6 +264,29 @@ class WeixinClient:
             context_token=context_token,
             image_bytes=image_bytes,
         )
+
+    async def _resolve_media_source(
+        self, source: str, *, default_name: str
+    ) -> tuple[bytes, str]:
+        """Resolve URL / HA local path to (bytes, file_name)."""
+        candidate = source.strip()
+        if not candidate:
+            raise ValueError("Media source is empty")
+        if is_url(candidate):
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+            session = async_get_clientsession(self._hass)
+            async with session.get(candidate, timeout=120) as resp:
+                if resp.status >= 400:
+                    raise RuntimeError(f"download failed: {resp.status}")
+                data = await resp.read()
+            from pathlib import Path
+            remote_name = Path(candidate.split("?", 1)[0]).name
+            return data, remote_name or default_name
+        local_path = resolve_ha_local_path(self._hass, candidate)
+        if local_path is not None:
+            data = await self._hass.async_add_executor_job(local_path.read_bytes)
+            return data, local_path.name or default_name
+        raise ValueError(f"Media source not found: {candidate}")
 
     async def _run(self) -> None:
         consecutive_failures = 0
@@ -438,7 +523,12 @@ class WeixinClient:
                 command,
                 conversation_id=f"wechat:{self._account_id}:{from_user_id}",
                 agent_id=self._conversation_agent_id or None,
-                extra_system_prompt=build_upstream_extra_prompt(supports_image=True),
+                extra_system_prompt=build_upstream_extra_prompt(
+                    supports_image=True,
+                    supports_video=True,
+                    supports_gif=True,
+                    supports_file=True,
+                ),
             )
             if not reply:
                 return
@@ -465,6 +555,100 @@ class WeixinClient:
                             to_user_id=from_user_id,
                             context_token=resolved_context,
                             image_bytes=image_bytes,
+                        )
+                elif isinstance(seg, VideoSegment):
+                    try:
+                        resolved_camera = await async_resolve_camera_entity(
+                            self._hass, seg.source
+                        )
+                        if resolved_camera is not None:
+                            video_bytes, _name = await async_record_camera_clip(
+                                self._hass, resolved_camera
+                            )
+                        elif _is_remote_stream_source(seg.source):
+                            video_bytes, _name = await async_record_remote_stream_clip(
+                                self._hass, seg.source
+                            )
+                        else:
+                            video_bytes, _name = await self._resolve_media_source(
+                                seg.source, default_name="video.mp4"
+                            )
+                        await async_send_weixin_video(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            video_bytes=video_bytes,
+                        )
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.warning("Weixin video send failed: %s", err)
+                        await async_send_weixin_text(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            text=f"Video send failed: {type(err).__name__}: {err}",
+                        )
+                elif isinstance(seg, GifSegment):
+                    try:
+                        resolved_camera = await async_resolve_camera_entity(
+                            self._hass, seg.source
+                        )
+                        if resolved_camera is not None:
+                            gif_bytes, _name = await async_capture_camera_gif(
+                                self._hass, resolved_camera
+                            )
+                        else:
+                            gif_bytes, _name = await self._resolve_media_source(
+                                seg.source, default_name="animated.gif"
+                            )
+                        if len(gif_bytes) > _GIF_COMPRESS_THRESHOLD_BYTES:
+                            gif_bytes = await self._hass.async_add_executor_job(
+                                _compress_gif, gif_bytes
+                            )
+                        await async_send_weixin_image(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            image_bytes=gif_bytes,
+                        )
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.warning("Weixin gif send failed: %s", err)
+                        await async_send_weixin_text(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            text=f"GIF send failed: {type(err).__name__}: {err}",
+                        )
+                elif isinstance(seg, FileSegment):
+                    try:
+                        file_bytes, file_name = await self._resolve_media_source(
+                            seg.source, default_name="attachment.bin"
+                        )
+                        await async_send_weixin_file(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            file_bytes=file_bytes,
+                            file_name=file_name,
+                        )
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.warning("Weixin file send failed: %s", err)
+                        await async_send_weixin_text(
+                            self._hass,
+                            base_url=self._base_url,
+                            token=self._token,
+                            to_user_id=from_user_id,
+                            context_token=resolved_context,
+                            text=f"File send failed: {type(err).__name__}: {err}",
                         )
         finally:
             progress_task.cancel()
