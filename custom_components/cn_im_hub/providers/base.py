@@ -24,3 +24,4 @@ class ProviderSpec:
     validate_config: Callable[[HomeAssistant, dict[str, Any]], Awaitable[None]]
     setup_provider: Callable[..., Awaitable[ProviderRuntime]]
     flow_handler: type[Any] | None = None
+    allow_multiple: bool = False

@@ -28,17 +28,53 @@
       "name": "Send Message",
       "description": "Send a message via the selected IM provider.",
       "fields": {
-        "target": {
-          "name": "Target",
-          "description": "Optional. If omitted, the service will use the currently selected target from the matching provider selector. When multiple same-type provider instances exist, a filled target also helps route to the correct instance."
-        },
         "wechat_account_id": {
           "name": "WeChat Account",
           "description": "Required when using WeChat with multiple bound accounts. Use the WeChat subentry title suffix or the full title, for example: WeChat (abc123@im.bot)."
         },
         "camera_entity": {
           "name": "Camera Entity",
-          "description": "Capture a snapshot from this camera and send it as an image. Currently supported by WeChat, WeCom, Feishu, QQ, and DingTalk."
+          "description": "Capture a snapshot from this camera and send it as an image. Currently supported by WeChat, WeCom, Feishu, and QQ."
+        },
+        "tts_text": {
+          "name": "TTS Text",
+          "description": "Text to synthesize and send as voice when supported by the provider."
+        },
+        "file_path": {
+          "name": "File Path",
+          "description": "Absolute local file path to send as media."
+        },
+        "file_url": {
+          "name": "File URL",
+          "description": "Remote URL to download and send as media."
+        },
+        "file_name": {
+          "name": "File Name",
+          "description": "Optional outbound filename override for file media."
+        },
+        "media_type": {
+          "name": "Media Type",
+          "description": "Optional media type override for file_path or file_url."
+        },
+        "message_format": {
+          "name": "Message Format",
+          "description": "Optional outbound text format override. Currently QQ supports auto, text, and markdown."
+        },
+        "approval_id": {
+          "name": "Approval ID",
+          "description": "When set, send the message as a QQ approval prompt with inline allow/deny buttons."
+        },
+        "record_duration": {
+          "name": "Record Duration",
+          "description": "When camera_entity is used for video or GIF capture, planned recording or capture duration in seconds. GIF defaults to 3 seconds when omitted."
+        },
+        "lookback": {
+          "name": "Lookback",
+          "description": "Optional lookback seconds to include before camera video recording starts. Only applies to video capture."
+        },
+        "gif_fps": {
+          "name": "GIF FPS",
+          "description": "Frames per second when generating an animated GIF from camera snapshots."
         }
       }
     }
@@ -67,20 +103,8 @@
         "reconfigure": "WeCom Settings"
       },
       "step": {
-        "setup_method": {
+        "set_options": {
           "title": "Add WeCom",
-          "description": "Choose how to add WeCom. Use QR-based onboarding for new users, or enter Bot ID and Secret directly for existing users.",
-          "menu_options": {
-            "qr_prepare": "Scan QR Code",
-            "manual": "Manual Entry"
-          }
-        },
-        "qr_wait": {
-          "title": "Waiting for WeCom Scan",
-          "description": "Scan the QR code with WeCom and complete authorization. After confirmation, click Submit. If the QR image does not render, open the QR URL manually.\n\n{qr_markdown}\n\nQR URL: {qr_url}"
-        },
-        "manual": {
-          "title": "Add WeCom (Manual)",
           "data": {
             "bot_id": "Bot ID",
             "secret": "Secret"
@@ -99,7 +123,8 @@
           "title": "Add QQ",
           "data": {
             "qq_app_id": "App ID",
-            "qq_client_secret": "App Secret"
+            "qq_client_secret": "App Secret",
+            "qq_show_live_progress": "Show Thinking And Tool Progress"
           }
         }
       }

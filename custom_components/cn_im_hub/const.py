@@ -12,7 +12,7 @@ PROVIDER_QQ: Final = "qq"
 PROVIDER_DINGTALK: Final = "dingtalk"
 PROVIDER_WECHAT: Final = "wechat"
 PROVIDER_XIAOYI: Final = "xiaoyi"
-PROVIDERS: Final = (PROVIDER_FEISHU, PROVIDER_WECOM, PROVIDER_QQ, PROVIDER_DINGTALK, PROVIDER_WECHAT, PROVIDER_XIAOYI)
+PROVIDERS: Final = (PROVIDER_WECOM, PROVIDER_WECHAT, PROVIDER_QQ, PROVIDER_FEISHU, PROVIDER_DINGTALK, PROVIDER_XIAOYI)
 
 CONF_ENABLED_PROVIDERS: Final = "enabled_providers"
 CONF_PROVIDERS: Final = "providers"
@@ -57,6 +57,18 @@ ATTR_TARGET_TYPE: Final = "target_type"
 ATTR_CHANNEL: Final = "channel"
 ATTR_WECHAT_ACCOUNT_ID: Final = "wechat_account_id"
 ATTR_CAMERA_ENTITY: Final = "camera_entity"
+ATTR_FILE_PATH: Final = "file_path"
+ATTR_FILE_URL: Final = "file_url"
+ATTR_FILE_NAME: Final = "file_name"
+ATTR_MEDIA_TYPE: Final = "media_type"
+ATTR_TTS_TEXT: Final = "tts_text"
+ATTR_MESSAGE_FORMAT: Final = "message_format"
+ATTR_APPROVAL_ID: Final = "approval_id"
+ATTR_RECORD_DURATION: Final = "record_duration"
+ATTR_LOOKBACK: Final = "lookback"
+ATTR_GIF_FPS: Final = "gif_fps"
+DEFAULT_VIDEO_RECORD_DURATION: Final = 10
+DEFAULT_GIF_DURATION: Final = 3
 
 DEFAULT_FEISHU_TARGET_TYPE: Final = "chat_id"
 
