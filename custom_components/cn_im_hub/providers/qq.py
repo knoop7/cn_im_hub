@@ -27,6 +27,7 @@ from ..camera_media import (
     async_record_camera_clip,
     async_record_remote_stream_clip,
     async_resolve_camera_entity,
+    resolve_ha_local_path,
 )
 from ..const import CONF_QQ_APP_ID, CONF_QQ_CLIENT_SECRET, PROVIDER_QQ
 from ..egdettspy import async_generate_tts_mp3, is_edge_tts_available
@@ -269,6 +270,16 @@ def _guess_suffix(file_name: str, content_type: str) -> str:
     return guessed or ".bin"
 
 
+def _guess_image_file_name(image_bytes: bytes) -> str:
+    if image_bytes.startswith((b"GIF87a", b"GIF89a")):
+        return "image.gif"
+    if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image.png"
+    if image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
+        return "image.webp"
+    return "image.jpg"
+
+
 def _extract_file_text(raw: bytes, file_name: str) -> str:
     ext = Path(file_name).suffix.lower() if file_name else ""
     if ext in _TEXT_FILE_EXTENSIONS or not ext:
@@ -392,6 +403,7 @@ class QQClient:
             image_bytes,
             target_type=target_type,
             reply_to_message_id=None,
+            file_name=_guess_image_file_name(image_bytes),
         )
 
     async def send_media(
@@ -650,18 +662,8 @@ class QQClient:
                 elif isinstance(segment, FileSegment):
                     try:
                         normalized_source = _normalize_media_source(segment.source)
-                        if is_url(normalized_source) and not _is_remote_stream_source(normalized_source):
-                            await self._send_media_url_message(
-                                inbound.target,
-                                normalized_source,
-                                media_kind="file",
-                                target_type=inbound.target_kind,
-                                reply_to_message_id=inbound.message_id or None,
-                                file_name=Path(normalized_source.split("?", 1)[0]).name or "attachment.bin",
-                            )
-                            continue
                         file_bytes, file_name = await self._resolve_media_source(
-                            segment.source,
+                            normalized_source,
                             default_name="attachment.bin",
                         )
                         await self._send_media_message(
@@ -693,16 +695,6 @@ class QQClient:
                                 self._hass,
                                 normalized_source,
                             )
-                        elif is_url(normalized_source):
-                            await self._send_media_url_message(
-                                inbound.target,
-                                normalized_source,
-                                media_kind="video",
-                                target_type=inbound.target_kind,
-                                reply_to_message_id=inbound.message_id or None,
-                                file_name=Path(normalized_source.split("?", 1)[0]).name or "video.mp4",
-                            )
-                            continue
                         else:
                             video_bytes, file_name = await self._resolve_media_source(
                                 normalized_source,
@@ -742,6 +734,7 @@ class QQClient:
                             gif_bytes,
                             target_type=inbound.target_kind,
                             reply_to_message_id=inbound.message_id or None,
+                            file_name="animated.gif",
                         )
                     except Exception as err:  # noqa: BLE001
                         _LOGGER.warning("QQ gif send failed: %s", err)
@@ -1220,6 +1213,7 @@ class QQClient:
         *,
         target_type: str,
         reply_to_message_id: str | None,
+        file_name: str | None = None,
     ) -> None:
         token = await self._get_token()
         if not image_bytes:
@@ -1234,6 +1228,7 @@ class QQClient:
             kind,
             file_type=1,
             file_data=image_bytes,
+            file_name=file_name or _guess_image_file_name(image_bytes),
         )
         if kind == "user":
             path = f"/v2/users/{ident}/messages"
@@ -1409,7 +1404,7 @@ class QQClient:
             "srv_send_msg": False,
             "url": media_url,
         }
-        if file_type == 4 and file_name:
+        if file_name:
             upload_body["file_name"] = file_name
 
         async with self._session.post(
@@ -1479,7 +1474,7 @@ class QQClient:
             "srv_send_msg": False,
             "file_data": base64.b64encode(file_data).decode("ascii"),
         }
-        if file_type == 4 and resolved_file_name:
+        if resolved_file_name:
             body["file_name"] = resolved_file_name
 
         async with self._session.post(
@@ -1510,8 +1505,8 @@ class QQClient:
                     if resp.status < 400:
                         return await resp.read()
                 return None
-            local_path = Path(source)
-            if local_path.is_file():
+            local_path = resolve_ha_local_path(self._hass, source)
+            if local_path is not None:
                 return await self._hass.async_add_executor_job(local_path.read_bytes)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Failed to resolve QQ image source (%s): %s", source, err)
@@ -1567,8 +1562,8 @@ class QQClient:
                 data = await resp.read()
             remote_name = Path(candidate.split("?", 1)[0]).name
             return data, remote_name or default_name
-        local_path = Path(candidate)
-        if local_path.is_file():
+        local_path = resolve_ha_local_path(self._hass, candidate)
+        if local_path is not None:
             data = await self._hass.async_add_executor_job(local_path.read_bytes)
             return data, local_path.name or default_name
         raise ValueError(f"Media source not found: {candidate}")
