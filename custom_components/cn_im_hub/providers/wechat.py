@@ -458,15 +458,17 @@ class WeixinClient:
                 aeskey_hex=media.aeskey_hex or None,
             )
             if media.kind == "image":
-                import tempfile
+                import uuid
+                from pathlib import Path
                 compressed = await self._hass.async_add_executor_job(
                     _compress_image, raw, 640, 60
                 )
-                tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                tmp.write(compressed)
-                tmp.close()
+                tmp_dir = Path(self._hass.config.path(".storage", "cn_im_hub", "tmp"))
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                tmp_path = tmp_dir / f"wx_{uuid.uuid4().hex[:12]}.jpg"
+                await self._hass.async_add_executor_job(tmp_path.write_bytes, compressed)
                 prefix = text + "\n" if text else ""
-                return f"{prefix}[ATTACHMENT:image/jpeg:{tmp.name}]"
+                return f"{prefix}[ATTACHMENT:image/jpeg:{tmp_path}]"
             if media.kind == "file":
                 file_text = await self._hass.async_add_executor_job(
                     _extract_file_text, raw, media.file_name
